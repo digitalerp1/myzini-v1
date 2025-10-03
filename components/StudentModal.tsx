@@ -1,8 +1,9 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '../services/supabase';
 import { Student, Class } from '../types';
 import Spinner from './Spinner';
+import ImageUpload from './ImageUpload';
+import { sanitizeForPath } from '../utils/textUtils';
 
 interface StudentModalProps {
     student: Student | null;
@@ -12,6 +13,9 @@ interface StudentModalProps {
 }
 
 const bloodGroups = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
+
+// Simple cache to avoid refetching the school name repeatedly
+let schoolNameCache: string | null = null;
 
 const StudentModal: React.FC<StudentModalProps> = ({ student, classes, onClose, onSave }) => {
     const [formData, setFormData] = useState<Partial<Student>>({
@@ -34,10 +38,51 @@ const StudentModal: React.FC<StudentModalProps> = ({ student, classes, onClose, 
     });
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [schoolName, setSchoolName] = useState<string | null>(schoolNameCache);
+
+    useEffect(() => {
+        const fetchSchoolName = async () => {
+            if (schoolNameCache) {
+                setSchoolName(schoolNameCache);
+                return;
+            }
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+                const { data } = await supabase
+                    .from('owner')
+                    .select('school_name')
+                    .eq('uid', user.id)
+                    .single();
+                if (data) {
+                    schoolNameCache = data.school_name;
+                    setSchoolName(data.school_name);
+                }
+            }
+        };
+        fetchSchoolName();
+    }, []);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
+    };
+
+    const handlePhotoUrlChange = (url: string) => {
+        setFormData(prev => ({ ...prev, photo_url: url }));
+    };
+
+    const getStudentImagePath = async (fileName: string): Promise<string> => {
+        if (!schoolName) throw new Error("School name could not be determined. Please set up the school profile first.");
+        if (!formData.class) throw new Error("Student class must be set before uploading an image.");
+        if (!formData.roll_number) throw new Error("Student roll number must be set before uploading an image.");
+        
+        const sanitizedSchoolName = sanitizeForPath(schoolName);
+        const sanitizedClass = sanitizeForPath(formData.class);
+        const sanitizedRoll = sanitizeForPath(formData.roll_number);
+        const extension = fileName.split('.').pop() || 'png';
+        const uniqueFileName = `${Date.now()}.${extension}`;
+
+        return `${sanitizedSchoolName}/${sanitizedClass}/${sanitizedRoll}/${uniqueFileName}`;
     };
     
     const handleSubmit = async (e: React.FormEvent) => {
@@ -92,7 +137,7 @@ const StudentModal: React.FC<StudentModalProps> = ({ student, classes, onClose, 
                     </div>
                      <div>
                         <label className="block text-sm font-medium text-gray-700">Class</label>
-                        <select name="class" value={formData.class} onChange={handleChange} className="mt-1 input-field">
+                        <select name="class" value={formData.class} onChange={handleChange} required className="mt-1 input-field">
                             <option value="">Select Class</option>
                             {classes.map(c => <option key={c.id} value={c.class_name}>{c.class_name}</option>)}
                         </select>
@@ -157,10 +202,14 @@ const StudentModal: React.FC<StudentModalProps> = ({ student, classes, onClose, 
                         <label className="block text-sm font-medium text-gray-700">Previous School</label>
                         <input type="text" name="previous_school_name" value={formData.previous_school_name} onChange={handleChange} className="mt-1 input-field"/>
                     </div>
-                    <div className="md:col-span-2">
-                        <label className="block text-sm font-medium text-gray-700">Photo URL</label>
-                        <input type="url" name="photo_url" value={formData.photo_url} onChange={handleChange} placeholder="https://..." className="mt-1 input-field"/>
-                    </div>
+
+                    <ImageUpload
+                        label="Photo"
+                        currentUrl={formData.photo_url}
+                        onUrlChange={handlePhotoUrlChange}
+                        getUploadPath={getStudentImagePath}
+                    />
+
                     <div className="md:col-span-2 flex justify-end items-center gap-4 mt-4">
                         <button type="button" onClick={onClose} className="px-6 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 disabled:opacity-50 transition-colors">
                             Cancel

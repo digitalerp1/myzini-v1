@@ -1,8 +1,9 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '../services/supabase';
 import { Staff } from '../types';
 import Spinner from './Spinner';
+import ImageUpload from './ImageUpload';
+import { sanitizeForPath } from '../utils/textUtils';
 
 interface StaffModalProps {
     staff: Staff | null;
@@ -19,6 +20,9 @@ const generateRandomId = () => {
     }
     return `STAFF-${result}`;
 };
+
+// Simple cache to avoid refetching the school name repeatedly
+let schoolNameCache: string | null = null;
 
 const StaffModal: React.FC<StaffModalProps> = ({ staff, onClose, onSave }) => {
     const [formData, setFormData] = useState<Partial<Staff>>({
@@ -37,6 +41,29 @@ const StaffModal: React.FC<StaffModalProps> = ({ staff, onClose, onSave }) => {
     });
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [schoolName, setSchoolName] = useState<string | null>(schoolNameCache);
+
+    useEffect(() => {
+        const fetchSchoolName = async () => {
+            if (schoolNameCache) {
+                setSchoolName(schoolNameCache);
+                return;
+            }
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+                const { data } = await supabase
+                    .from('owner')
+                    .select('school_name')
+                    .eq('uid', user.id)
+                    .single();
+                if (data) {
+                    schoolNameCache = data.school_name;
+                    setSchoolName(data.school_name);
+                }
+            }
+        };
+        fetchSchoolName();
+    }, []);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         const { name, value, type } = e.target;
@@ -46,6 +73,25 @@ const StaffModal: React.FC<StaffModalProps> = ({ staff, onClose, onSave }) => {
         } else {
             setFormData(prev => ({ ...prev, [name]: value }));
         }
+    };
+
+    const handlePhotoUrlChange = (url: string) => {
+        setFormData(prev => ({ ...prev, photo_url: url }));
+    };
+
+    const getStaffImagePath = async (fileName: string): Promise<string> => {
+        if (!schoolName) {
+            throw new Error("School name could not be determined. Please ensure the school profile is set up.");
+        }
+        if (!formData.name) {
+            throw new Error("Staff name must be set before uploading an image.");
+        }
+        const sanitizedSchoolName = sanitizeForPath(schoolName);
+        const sanitizedStaffName = sanitizeForPath(formData.name);
+        const extension = fileName.split('.').pop() || 'png';
+        const uniqueFileName = `${Date.now()}.${extension}`;
+        
+        return `${sanitizedSchoolName}/staff/${sanitizedStaffName}/${uniqueFileName}`;
     };
     
     const handleSubmit = async (e: React.FormEvent) => {
@@ -140,10 +186,14 @@ const StaffModal: React.FC<StaffModalProps> = ({ staff, onClose, onSave }) => {
                         <label className="block text-sm font-medium text-gray-700">Monthly Salary</label>
                         <input type="number" name="salary_amount" value={formData.salary_amount} onChange={handleChange} required className="mt-1 input-field"/>
                     </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">Photo URL</label>
-                        <input type="url" name="photo_url" value={formData.photo_url} onChange={handleChange} placeholder="https://..." className="mt-1 input-field"/>
-                    </div>
+
+                    <ImageUpload 
+                        label="Photo"
+                        currentUrl={formData.photo_url}
+                        onUrlChange={handlePhotoUrlChange}
+                        getUploadPath={getStaffImagePath}
+                    />
+                    
                     <div className="md:col-span-2 flex items-center">
                         <input type="checkbox" name="is_active" id="is_active" checked={formData.is_active} onChange={handleChange} className="h-4 w-4 text-primary border-gray-300 rounded focus:ring-primary"/>
                         <label htmlFor="is_active" className="ml-2 block text-sm text-gray-900">Staff is Active</label>

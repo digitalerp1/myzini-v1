@@ -1,9 +1,10 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../services/supabase';
 import { User } from '@supabase/supabase-js';
 import { OwnerProfile } from '../types';
 import Spinner from '../components/Spinner';
+import ImageUpload from '../components/ImageUpload';
+import { sanitizeForPath } from '../utils/textUtils';
 
 interface ProfileProps {
   user: User;
@@ -46,6 +47,21 @@ const Profile: React.FC<ProfileProps> = ({ user }) => {
     if (profile) {
       setProfile({ ...profile, [e.target.name]: e.target.value });
     }
+  };
+
+  const handleImageUrlChange = (url: string) => {
+    if (profile) {
+        setProfile({ ...profile, school_image_url: url });
+    }
+  };
+
+  const getSchoolImagePath = async (fileName: string): Promise<string> => {
+    if (!profile?.school_name) {
+        throw new Error("School name must be set before uploading an image.");
+    }
+    const sanitizedSchoolName = sanitizeForPath(profile.school_name);
+    const extension = fileName.split('.').pop() || 'png';
+    return `${sanitizedSchoolName}/profile/logo.${extension}`;
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -118,10 +134,14 @@ const Profile: React.FC<ProfileProps> = ({ user }) => {
             <label htmlFor="school_code" className="block text-sm font-medium text-gray-700">School Code</label>
             <input type="text" name="school_code" id="school_code" value={profile?.school_code || ''} onChange={handleInputChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm"/>
         </div>
-         <div className="md:col-span-2">
-            <label htmlFor="school_image_url" className="block text-sm font-medium text-gray-700">School Image URL</label>
-            <input type="url" name="school_image_url" id="school_image_url" value={profile?.school_image_url || ''} onChange={handleInputChange} placeholder="https://..." className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm"/>
-        </div>
+        
+        <ImageUpload
+            label="School Logo"
+            currentUrl={profile?.school_image_url}
+            onUrlChange={handleImageUrlChange}
+            getUploadPath={getSchoolImagePath}
+        />
+        
         <div className="md:col-span-2 flex justify-end items-center gap-4 mt-4">
              {profileExists && (
                 <button type="button" onClick={handleDelete} disabled={saving} className="px-6 py-2 border border-red-500 text-red-500 rounded-md hover:bg-red-50 disabled:opacity-50 transition-colors">
