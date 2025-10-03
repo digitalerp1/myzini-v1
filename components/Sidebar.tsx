@@ -16,6 +16,7 @@ import QueryIcon from './icons/QueryIcon';
 import ReportIcon from './icons/ReportIcon';
 import LogoutIcon from './icons/LogoutIcon';
 import ExternalLinkIcon from './icons/ExternalLinkIcon';
+import ArchiveIcon from './icons/ArchiveIcon';
 
 interface SidebarProps {
     isOpen: boolean;
@@ -91,6 +92,10 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                     <NavLink to="/query-helper" onClick={onClose} className={({ isActive }) => `${linkClasses} ${isActive ? activeLinkClasses : ''}`}>
                         <QueryIcon />
                         <span className="mx-4">AI Query Helper</span>
+                    </NavLink>
+                    <NavLink to="/data-export" onClick={onClose} className={({ isActive }) => `${linkClasses} ${isActive ? activeLinkClasses : ''}`}>
+                        <ArchiveIcon />
+                        <span className="mx-4">Data Export</span>
                     </NavLink>
 
                      <div className="pt-4 mt-4 border-t border-gray-700">

@@ -19,6 +19,7 @@ import Spinner from './components/Spinner';
 import Layout from './components/Layout';
 import ExternalPage from './pages/ExternalPage';
 import { externalLinks } from './services/externalLinks';
+import DataExport from './pages/DataExport';
 
 const App: React.FC = () => {
   const [session, setSession] = useState<Session | null>(null);
@@ -73,6 +74,7 @@ const App: React.FC = () => {
         <Route path="/attendance" element={<Attendance />} />
         <Route path="/attendance-report" element={<AttendanceReport />} />
         <Route path="/query-helper" element={<QueryHelper />} />
+        <Route path="/data-export" element={<DataExport />} />
       </Route>
 
       {externalLinks.map(link => (
