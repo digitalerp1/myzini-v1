@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { supabase } from './services/supabase';
 import { Session } from '@supabase/supabase-js';
@@ -15,6 +14,7 @@ import QueryHelper from './pages/QueryHelper';
 import DuesList from './pages/DuesList';
 import Attendance from './pages/Attendance';
 import AttendanceReport from './pages/AttendanceReport';
+import Results from './pages/Results';
 import Spinner from './components/Spinner';
 import Layout from './components/Layout';
 import ExternalPage from './pages/ExternalPage';
@@ -73,6 +73,7 @@ const App: React.FC = () => {
         <Route path="/dues-list" element={<DuesList />} />
         <Route path="/attendance" element={<Attendance />} />
         <Route path="/attendance-report" element={<AttendanceReport />} />
+        <Route path="/results" element={<Results />} />
         <Route path="/query-helper" element={<QueryHelper />} />
         <Route path="/data-export" element={<DataExport />} />
       </Route>

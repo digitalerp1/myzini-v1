@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { NavLink, useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../services/supabase';
@@ -14,6 +13,7 @@ import DuesIcon from './icons/DuesIcon';
 import AttendanceIcon from './icons/AttendanceIcon';
 import QueryIcon from './icons/QueryIcon';
 import ReportIcon from './icons/ReportIcon';
+import ResultsIcon from './icons/ResultsIcon';
 import LogoutIcon from './icons/LogoutIcon';
 import ExternalLinkIcon from './icons/ExternalLinkIcon';
 import ArchiveIcon from './icons/ArchiveIcon';
@@ -88,6 +88,10 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                     <NavLink to="/attendance-report" onClick={onClose} className={({ isActive }) => `${linkClasses} ${isActive ? activeLinkClasses : ''}`}>
                         <ReportIcon />
                         <span className="mx-4">Attendance Report</span>
+                    </NavLink>
+                    <NavLink to="/results" onClick={onClose} className={({ isActive }) => `${linkClasses} ${isActive ? activeLinkClasses : ''}`}>
+                        <ResultsIcon />
+                        <span className="mx-4">Results</span>
                     </NavLink>
                     <NavLink to="/query-helper" onClick={onClose} className={({ isActive }) => `${linkClasses} ${isActive ? activeLinkClasses : ''}`}>
                         <QueryIcon />

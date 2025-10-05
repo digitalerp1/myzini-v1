@@ -1,4 +1,3 @@
-
 export interface OwnerProfile {
   uid: string;
   school_name: string;
@@ -123,4 +122,23 @@ export interface FeeType {
   fees_name: string;
   amount: number;
   frequency: string;
+}
+
+export interface SubjectMarks {
+  subject_name: string;
+  total_marks: number | string;
+  pass_marks: number | string;
+  obtained_marks: number | string;
+}
+
+export interface ExamResult {
+  id: number;
+  uid: string;
+  exam_name: string;
+  class: string;
+  roll_number: string;
+  subjects_marks: {
+    subjects: SubjectMarks[];
+  };
+  created_at: string;
 }
