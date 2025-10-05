@@ -62,24 +62,36 @@ const ResultsModal: React.FC<ResultsModalProps> = ({ result, student, examName, 
             return;
         }
 
-        const dataToSave = {
-            uid: user.id,
-            exam_name: examName,
-            class: student.class,
-            roll_number: student.roll_number,
-            subjects_marks: {
-                subjects: subjects.map(s => ({
-                    subject_name: s.subject_name,
-                    total_marks: Number(s.total_marks) || 0,
-                    pass_marks: Number(s.pass_marks) || 0,
-                    obtained_marks: Number(s.obtained_marks) || 0,
-                })),
-            },
+        const subjectsPayload = {
+            subjects: subjects.map(s => ({
+                subject_name: s.subject_name,
+                total_marks: Number(s.total_marks) || 0,
+                pass_marks: Number(s.pass_marks) || 0,
+                obtained_marks: Number(s.obtained_marks) || 0,
+            })),
         };
-        
-        const { error: saveError } = await supabase.from('exam_results').upsert(dataToSave, {
-            onConflict: 'uid,exam_name,class,roll_number'
-        });
+
+        let saveError: any = null;
+
+        if (result && result.id) { // This is an existing record, UPDATE it.
+            const { error } = await supabase
+                .from('exam_results')
+                .update({ subjects_marks: subjectsPayload })
+                .eq('id', result.id);
+            saveError = error;
+        } else { // This is a new record, INSERT it.
+            const dataToInsert = {
+                uid: user.id,
+                exam_name: examName,
+                class: student.class,
+                roll_number: student.roll_number!,
+                subjects_marks: subjectsPayload,
+            };
+            const { error } = await supabase
+                .from('exam_results')
+                .insert(dataToInsert);
+            saveError = error;
+        }
         
         if (saveError) {
             setError(saveError.message);

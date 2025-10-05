@@ -40,6 +40,7 @@ const Results: React.FC = () => {
 
     const fetchExamsList = useCallback(async () => {
         setLoading(true);
+        setError(null);
         const { data, error } = await supabase.from('exam_results').select('exam_name, class');
         if (error) {
             setError(error.message);
@@ -69,16 +70,48 @@ const Results: React.FC = () => {
         }
     }, [view, fetchExamsList]);
 
-    const handleStartNewExam = (examName: string, className: string, subjects: SubjectMarkDef[]) => {
+    const handleStartNewExam = async (examName: string, className: string, subjects: SubjectMarkDef[]) => {
+        setIsDefinitionModalOpen(false);
+        setLoading(true);
+        setView('entry');
         setCurrentExam({ name: examName, className: className });
         setExamTemplate(subjects);
-        setView('entry');
-        setIsDefinitionModalOpen(false);
+        setError(null);
+        
+        try {
+            const { data, error } = await supabase.from('students').select('*').eq('class', className).order('roll_number');
+            if (error) throw error;
+            setStudents(data as Student[]);
+            setResultsForExam([]); // It's a new exam, so no previous results
+        } catch (err: any) {
+            setError(err.message);
+            setStudents([]);
+        } finally {
+            setLoading(false);
+        }
     };
     
-    const handleManageExam = (exam: Exam) => {
-        setCurrentExam({ name: exam.name, className: exam.className });
+    const handleManageExam = async (exam: Exam) => {
+        setLoading(true);
         setView('entry');
+        setCurrentExam({ name: exam.name, className: exam.className });
+        setExamTemplate(null); // Will be derived from fetched results
+        setError(null);
+
+        try {
+            const [studentsRes, resultsRes] = await Promise.all([
+                supabase.from('students').select('*').eq('class', exam.className).order('roll_number'),
+                supabase.from('exam_results').select('*').eq('exam_name', exam.name).eq('class', exam.className)
+            ]);
+            if (studentsRes.error) throw studentsRes.error;
+            if (resultsRes.error) throw resultsRes.error;
+            setStudents(studentsRes.data as Student[]);
+            setResultsForExam(resultsRes.data as ResultType[]);
+        } catch (err: any) {
+            setError(err.message);
+        } finally {
+            setLoading(false);
+        }
     };
 
     const handleBackToList = () => {
@@ -87,6 +120,8 @@ const Results: React.FC = () => {
         setStudents([]);
         setResultsForExam([]);
         setExamTemplate(null);
+        setError(null);
+        setMessage(null);
     };
     
     const openResultsModal = (student: Student) => {
@@ -103,30 +138,20 @@ const Results: React.FC = () => {
         setMessage({ type, text });
         setTimeout(() => setMessage(null), 5000);
     };
-    
-    // This effect runs when the view changes to 'entry'
-    useEffect(() => {
-        if (view === 'entry' && currentExam) {
-            const fetchEntryData = async () => {
-                setLoading(true);
-                try {
-                    const [studentsRes, resultsRes] = await Promise.all([
-                        supabase.from('students').select('*').eq('class', currentExam.className).order('roll_number'),
-                        supabase.from('exam_results').select('*').eq('exam_name', currentExam.name).eq('class', currentExam.className)
-                    ]);
-                    if (studentsRes.error) throw studentsRes.error;
-                    if (resultsRes.error) throw resultsRes.error;
-                    setStudents(studentsRes.data as Student[]);
-                    setResultsForExam(resultsRes.data as ResultType[]);
-                } catch (err: any) {
-                    setError(err.message);
-                } finally {
-                    setLoading(false);
-                }
-            };
-            fetchEntryData();
+
+    const subjectsTemplateForModal = useMemo(() => {
+        if (examTemplate) {
+            return examTemplate;
         }
-    }, [view, currentExam]);
+        if (resultsForExam.length > 0 && resultsForExam[0].subjects_marks?.subjects) {
+            return resultsForExam[0].subjects_marks.subjects.map(({ subject_name, total_marks, pass_marks }) => ({
+                subject_name,
+                total_marks,
+                pass_marks,
+            }));
+        }
+        return [];
+    }, [examTemplate, resultsForExam]);
 
     // UI for List View
     const renderListView = () => (
@@ -180,21 +205,6 @@ const Results: React.FC = () => {
     // UI for Entry View
     const renderEntryView = () => {
         const studentResultsMap = new Map(resultsForExam.map(r => [r.roll_number, r]));
-
-         const subjectsTemplateForModal = useMemo(() => {
-            if (examTemplate) {
-                return examTemplate;
-            }
-            if (resultsForExam.length > 0 && resultsForExam[0].subjects_marks?.subjects) {
-                return resultsForExam[0].subjects_marks.subjects.map(({ subject_name, total_marks, pass_marks }) => ({
-                    subject_name,
-                    total_marks,
-                    pass_marks,
-                }));
-            }
-            return [];
-        }, [examTemplate, resultsForExam]);
-
 
         return (
             <>
