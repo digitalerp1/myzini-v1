@@ -47,8 +47,10 @@ const Attendance: React.FC = () => {
             setError(error.message);
             setStudents([]);
         } else {
-            const validStudents = data.filter(s => s.roll_number);
-            setStudents(validStudents as Student[]);
+            // FIX: Explicitly type the student data to ensure correct type inference downstream.
+            const studentData: Student[] = data || [];
+            const validStudents = studentData.filter(s => s.roll_number);
+            setStudents(validStudents);
             // By default, mark all students as present
             const allRolls = new Set(validStudents.map(s => s.roll_number!));
             setPresentRolls(allRolls);
