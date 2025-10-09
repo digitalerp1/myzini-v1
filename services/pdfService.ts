@@ -18,6 +18,12 @@ const CARD_HEIGHT_MM = 53.98;
  * @param school The school's profile information.
  */
 export const generateIdCardsPdf = async (students: Student[], school: OwnerProfile): Promise<void> => {
+    // Safeguard to prevent errors if the students array is empty.
+    if (!students || students.length === 0) {
+        console.warn("generateIdCardsPdf called with no students. Aborting PDF generation.");
+        return;
+    }
+
     const pdf = new jsPDF('p', 'mm', 'a4');
 
     // Create a temporary, off-screen container for rendering
@@ -49,19 +55,24 @@ export const generateIdCardsPdf = async (students: Student[], school: OwnerProfi
         pageContainer.style.backgroundColor = 'white';
         container.appendChild(pageContainer);
 
-        // FIX: The original code used a single React root for the parent container, which is incorrect for rendering multiple pages.
-        // This has been corrected to create a new root for each page to ensure proper, isolated rendering before canvas capture.
-        // This logical fix also resolves the cascade of syntax and scope errors reported by the compiler.
         const pageRoot = ReactDOM.createRoot(pageContainer);
 
         // Render the chunk of cards into the page container
         await new Promise<void>(resolve => {
+            // FIX: Replaced JSX with React.createElement to resolve build error on Vercel.
+            // The build system was not correctly processing JSX syntax in this .ts file.
             pageRoot.render(
-                <React.StrictMode>
-                    {chunk.map(student => (
-                        <IdCardTemplate key={student.id} student={student} school={school} />
-                    ))}
-                </React.StrictMode>
+                React.createElement(
+                    React.StrictMode,
+                    null, // no props
+                    ...chunk.map(student =>
+                        React.createElement(IdCardTemplate, {
+                            key: student.id,
+                            student: student,
+                            school: school,
+                        })
+                    )
+                )
             );
             // Allow time for images to potentially load
             setTimeout(resolve, 500);
@@ -88,7 +99,6 @@ export const generateIdCardsPdf = async (students: Student[], school: OwnerProfi
     // Clean up the main container
     document.body.removeChild(container);
 
-    // FIX: Add a safeguard to prevent errors if the students array is empty.
-    const fileName = `id_cards_${sanitizeForPath(students[0]?.class || 'all')}.pdf`;
+    const fileName = `id_cards_${sanitizeForPath(students[0].class || 'all')}.pdf`;
     pdf.save(fileName);
 };
