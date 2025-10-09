@@ -20,6 +20,7 @@ import Layout from './components/Layout';
 import ExternalPage from './pages/ExternalPage';
 import { externalLinks } from './services/externalLinks';
 import DataExport from './pages/DataExport';
+import GeneratorTools from './pages/GeneratorTools';
 
 const App: React.FC = () => {
   const [session, setSession] = useState<Session | null>(null);
@@ -76,6 +77,7 @@ const App: React.FC = () => {
         <Route path="/results" element={<Results />} />
         <Route path="/query-helper" element={<QueryHelper />} />
         <Route path="/data-export" element={<DataExport />} />
+        <Route path="/generator-tools" element={<GeneratorTools />} />
       </Route>
 
       {externalLinks.map(link => (
