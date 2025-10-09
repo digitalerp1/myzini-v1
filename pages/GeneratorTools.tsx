@@ -1,9 +1,10 @@
 import React from 'react';
 import IdCardGenerator from '../components/generators/IdCardGenerator';
+import DuesBillGenerator from '../components/generators/DuesBillGenerator';
 
 const tools = [
     { name: 'ID Card Generator', component: <IdCardGenerator />, description: 'Generate and print student ID cards for an entire class.', enabled: true },
-    { name: 'Fees Dues Bill', component: null, description: 'Create bills for outstanding student fees.', enabled: false },
+    { name: 'Fees Dues Bill', component: <DuesBillGenerator />, description: 'Create bills for outstanding student fees.', enabled: true },
     { name: 'Exam Bills', component: null, description: 'Generate bills for examination fees.', enabled: false },
     { name: 'Student Progress Report', component: null, description: 'Design and print student report cards.', enabled: false },
 ];
