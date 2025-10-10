@@ -1,12 +1,14 @@
 import React from 'react';
 import IdCardGenerator from '../components/generators/IdCardGenerator';
 import DuesBillGenerator from '../components/generators/DuesBillGenerator';
+import MarksheetGenerator from '../components/generators/MarksheetGenerator';
+import CertificateGenerator from '../components/generators/CertificateGenerator';
 
 const tools = [
     { name: 'ID Card Generator', component: <IdCardGenerator />, description: 'Generate and print student ID cards for an entire class.', enabled: true },
     { name: 'Fees Dues Bill', component: <DuesBillGenerator />, description: 'Create bills for outstanding student fees.', enabled: true },
-    { name: 'Exam Bills', component: null, description: 'Generate bills for examination fees.', enabled: false },
-    { name: 'Student Progress Report', component: null, description: 'Design and print student report cards.', enabled: false },
+    { name: 'Marksheet Generator', component: <MarksheetGenerator />, description: 'Generate detailed student marksheets for a specific exam.', enabled: true },
+    { name: 'Certificate Generator', component: <CertificateGenerator />, description: 'Create achievement certificates based on exam performance.', enabled: true },
 ];
 
 const GeneratorTools: React.FC = () => {
