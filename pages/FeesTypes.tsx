@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../services/supabase';
 import { FeeType } from '../types';
@@ -7,6 +6,7 @@ import FeeTypeModal from '../components/FeeTypeModal';
 import AddDuesModal from '../components/AddDuesModal';
 import EditIcon from '../components/icons/EditIcon';
 import DeleteIcon from '../components/icons/DeleteIcon';
+import AddSpecificDuesModal from '../components/AddSpecificDuesModal';
 
 const FeesTypes: React.FC = () => {
     const [feeTypes, setFeeTypes] = useState<FeeType[]>([]);
@@ -14,6 +14,7 @@ const FeesTypes: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isDuesModalOpen, setIsDuesModalOpen] = useState(false);
+    const [isSpecificDuesModalOpen, setIsSpecificDuesModalOpen] = useState(false);
     const [selectedFeeType, setSelectedFeeType] = useState<FeeType | null>(null);
     const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -75,6 +76,7 @@ const FeesTypes: React.FC = () => {
     const closeModal = () => {
         setIsModalOpen(false);
         setIsDuesModalOpen(false);
+        setIsSpecificDuesModalOpen(false);
         setSelectedFeeType(null);
     };
 
@@ -87,7 +89,13 @@ const FeesTypes: React.FC = () => {
                         onClick={() => setIsDuesModalOpen(true)}
                         className="px-5 py-2.5 bg-secondary text-white font-semibold rounded-md hover:bg-green-600 transition-colors"
                     >
-                        Add School Dues
+                        Add Dues (All Students)
+                    </button>
+                     <button
+                        onClick={() => setIsSpecificDuesModalOpen(true)}
+                        className="px-5 py-2.5 bg-indigo-500 text-white font-semibold rounded-md hover:bg-indigo-600 transition-colors"
+                    >
+                        Add Dues (Specific)
                     </button>
                     <button
                         onClick={handleAdd}
@@ -156,9 +164,18 @@ const FeesTypes: React.FC = () => {
              {isDuesModalOpen && (
                 <AddDuesModal
                     onClose={closeModal}
-                    onSuccess={(className, month) => {
-                        showMessage('success', `Dues for ${month} have been added to all students in ${className}.`);
+                    onSuccess={(className, months) => {
+                        showMessage('success', `Dues for ${months.join(', ')} have been added to all students in ${className}.`);
                         closeModal();
+                    }}
+                />
+            )}
+            {isSpecificDuesModalOpen && (
+                <AddSpecificDuesModal
+                    onClose={closeModal}
+                    onSuccess={(count, months) => {
+                         showMessage('success', `Dues for ${months.join(', ')} have been added to ${count} students.`);
+                         closeModal();
                     }}
                 />
             )}
