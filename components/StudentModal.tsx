@@ -72,17 +72,19 @@ const StudentModal: React.FC<StudentModalProps> = ({ student, classes, onClose, 
     };
 
     const getStudentImagePath = async (fileName: string): Promise<string> => {
-        if (!schoolName) throw new Error("School name could not be determined. Please set up the school profile first.");
-        if (!formData.class) throw new Error("Student class must be set before uploading an image.");
-        if (!formData.roll_number) throw new Error("Student roll number must be set before uploading an image.");
+        if (!schoolName) {
+            throw new Error("School name could not be determined. Please set up the school profile first.");
+        }
+        if (!formData.name) {
+            throw new Error("Student name must be set before uploading an image.");
+        }
         
         const sanitizedSchoolName = sanitizeForPath(schoolName);
-        const sanitizedClass = sanitizeForPath(formData.class);
-        const sanitizedRoll = sanitizeForPath(formData.roll_number);
+        const sanitizedStudentName = sanitizeForPath(formData.name);
         const extension = fileName.split('.').pop() || 'png';
-        const uniqueFileName = `${Date.now()}.${extension}`;
+        const uniqueFileName = `student_${sanitizedStudentName}_${Date.now()}.${extension}`;
 
-        return `${sanitizedSchoolName}/${sanitizedClass}/${sanitizedRoll}/${uniqueFileName}`;
+        return `${sanitizedSchoolName}/${uniqueFileName}`;
     };
     
     const handleSubmit = async (e: React.FormEvent) => {
@@ -97,13 +99,10 @@ const StudentModal: React.FC<StudentModalProps> = ({ student, classes, onClose, 
             return;
         }
         
-        // Sanitize data before saving
-        const dataToSave = Object.fromEntries(
-            Object.entries(formData).map(([key, value]) => [key, value === '' ? null : value])
-        );
+        const dataToSave = { ...formData };
 
         if (student) { // Editing existing student
-            if (!dataToSave.password) {
+            if (!dataToSave.password || dataToSave.password === '') {
                 delete dataToSave.password;
             }
             const { error } = await supabase.from('students').update(dataToSave).eq('id', student.id);

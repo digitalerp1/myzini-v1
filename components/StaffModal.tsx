@@ -89,9 +89,9 @@ const StaffModal: React.FC<StaffModalProps> = ({ staff, onClose, onSave }) => {
         const sanitizedSchoolName = sanitizeForPath(schoolName);
         const sanitizedStaffName = sanitizeForPath(formData.name);
         const extension = fileName.split('.').pop() || 'png';
-        const uniqueFileName = `${Date.now()}.${extension}`;
+        const uniqueFileName = `staff_${sanitizedStaffName}_${Date.now()}.${extension}`;
         
-        return `${sanitizedSchoolName}/staff/${sanitizedStaffName}/${uniqueFileName}`;
+        return `${sanitizedSchoolName}/${uniqueFileName}`;
     };
     
     const handleSubmit = async (e: React.FormEvent) => {

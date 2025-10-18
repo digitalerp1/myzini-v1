@@ -61,7 +61,8 @@ const Profile: React.FC<ProfileProps> = ({ user }) => {
     }
     const sanitizedSchoolName = sanitizeForPath(profile.school_name);
     const extension = fileName.split('.').pop() || 'png';
-    return `${sanitizedSchoolName}/profile/logo.${extension}`;
+    const uniqueFileName = `logo_${Date.now()}.${extension}`;
+    return `${sanitizedSchoolName}/${uniqueFileName}`;
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {

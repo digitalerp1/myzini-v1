@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { uploadFileToGitHub } from '../services/githubService';
+import { uploadImage } from '../services/githubService';
 import Spinner from './Spinner';
 import UserCircleIcon from './icons/UserCircleIcon';
 
@@ -23,7 +23,7 @@ const ImageUpload: React.FC<ImageUploadProps> = ({ label, currentUrl, onUrlChang
 
         try {
             const path = await getUploadPath(file.name);
-            const newUrl = await uploadFileToGitHub(file, path);
+            const newUrl = await uploadImage(file, path);
             onUrlChange(newUrl);
         } catch (err: any) {
             setError(err.message);

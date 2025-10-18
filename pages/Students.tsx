@@ -132,13 +132,28 @@ const Students: React.FC = () => {
         setIsProfileModalOpen(true);
     };
 
-    const handleDelete = async (studentId: number, studentName: string) => {
-        if (window.confirm(`Are you sure you want to delete the record for ${studentName}?`)) {
-            const { error } = await supabase.from('students').delete().eq('id', studentId);
+    const handleDelete = async (student: StudentType) => {
+        if (window.confirm(`Are you sure you want to delete the record for ${student.name}? This will also remove their exam results.`)) {
+            // First, delete related exam results
+            if (student.class && student.roll_number) {
+                const { error: resultsError } = await supabase
+                    .from('exam_results')
+                    .delete()
+                    .eq('class', student.class)
+                    .eq('roll_number', student.roll_number);
+
+                if (resultsError) {
+                    showMessage('error', `Could not delete associated exam results: ${resultsError.message}`);
+                    return; // Stop if we can't delete related records
+                }
+            }
+            
+            // Then, delete the student record
+            const { error } = await supabase.from('students').delete().eq('id', student.id);
             if (error) {
                 showMessage('error', `Error deleting student: ${error.message}`);
             } else {
-                showMessage('success', 'Student record deleted successfully.');
+                showMessage('success', 'Student record and their results deleted successfully.');
             }
         }
     };
@@ -229,7 +244,7 @@ const Students: React.FC = () => {
                                         <div className="flex justify-center items-center space-x-2">
                                             <button onClick={() => handleViewProfile(student)} className="text-blue-600 hover:text-blue-900 transition-colors" title="View Profile"><ViewIcon /></button>
                                             <button onClick={() => handleEdit(student)} className="text-indigo-600 hover:text-indigo-900 transition-colors" title="Edit"><EditIcon /></button>
-                                            <button onClick={() => handleDelete(student.id, student.name)} className="text-red-600 hover:text-red-900 transition-colors" title="Delete"><DeleteIcon /></button>
+                                            <button onClick={() => handleDelete(student)} className="text-red-600 hover:text-red-900 transition-colors" title="Delete"><DeleteIcon /></button>
                                         </div>
                                     </td>
                                 </tr>
