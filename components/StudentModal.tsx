@@ -39,6 +39,7 @@ const StudentModal: React.FC<StudentModalProps> = ({ student, classes, onClose, 
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [schoolName, setSchoolName] = useState<string | null>(schoolNameCache);
+    const [isSuggestingRoll, setIsSuggestingRoll] = useState(false);
 
     useEffect(() => {
         const fetchSchoolName = async () => {
@@ -61,6 +62,40 @@ const StudentModal: React.FC<StudentModalProps> = ({ student, classes, onClose, 
         };
         fetchSchoolName();
     }, []);
+
+    useEffect(() => {
+        // Only suggest roll number for new students when a class is selected
+        if (!student && formData.class) {
+            const suggestRollNumber = async () => {
+                setIsSuggestingRoll(true);
+                const { data, error: fetchError } = await supabase
+                    .from('students')
+                    .select('roll_number')
+                    .eq('class', formData.class)
+                    .neq('roll_number', null);
+
+                if (fetchError) {
+                    // Don't block the user, just log it. They can enter manually.
+                    console.error("Error fetching roll numbers:", fetchError);
+                } else if (data) {
+                    const maxRollNumber = data.reduce((max, s) => {
+                        const currentRoll = parseInt(s.roll_number!, 10);
+                        return !isNaN(currentRoll) && currentRoll > max ? currentRoll : max;
+                    }, 0);
+
+                    setFormData(prev => ({
+                        ...prev,
+                        roll_number: (maxRollNumber + 1).toString()
+                    }));
+                }
+                setIsSuggestingRoll(false);
+            };
+            suggestRollNumber();
+        } else if (!student && !formData.class) {
+            // Clear roll number if class is deselected for a new student
+            setFormData(prev => ({ ...prev, roll_number: '' }));
+        }
+    }, [formData.class, student]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
@@ -143,7 +178,22 @@ const StudentModal: React.FC<StudentModalProps> = ({ student, classes, onClose, 
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700">Roll Number</label>
-                        <input type="text" name="roll_number" value={formData.roll_number} onChange={handleChange} className="mt-1 input-field"/>
+                        <div className="relative mt-1">
+                            <input
+                                type="text"
+                                name="roll_number"
+                                value={formData.roll_number}
+                                onChange={handleChange}
+                                className="input-field"
+                                disabled={isSuggestingRoll}
+                                placeholder={isSuggestingRoll ? "Suggesting..." : ""}
+                            />
+                            {isSuggestingRoll && (
+                                <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                                    <Spinner size="5" />
+                                </div>
+                            )}
+                        </div>
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700">Mobile</label>
