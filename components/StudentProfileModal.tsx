@@ -19,13 +19,53 @@ interface StudentProfileModalProps {
 const months: (keyof Student)[] = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
 const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
+const parsePaidAmount = (status: string | undefined | null): number => {
+    if (!status || status === 'undefined' || status === 'Dues') {
+        return 0;
+    }
+    const isoDateRegex = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+    if (isoDateRegex.test(status)) {
+        return Infinity; // Represents a legacy full payment
+    }
+    const payments = status.split(';');
+    return payments.reduce((total, payment) => {
+        const parts = payment.split('=d=');
+        if (parts.length === 2) {
+            const amount = parseFloat(parts[0]);
+            return total + (isNaN(amount) ? 0 : amount);
+        }
+        return total;
+    }, 0);
+};
 
-const StudentProfileModal: React.FC<StudentProfileModalProps> = ({ student, classes, onClose }) => {
+const StudentProfileModal: React.FC<StudentProfileModalProps> = ({ student: initialStudent, classes, onClose }) => {
+    const [student, setStudent] = useState<Student>(initialStudent);
     const [updatingFee, setUpdatingFee] = useState<string | null>(null);
     const [attendanceStatus, setAttendanceStatus] = useState<Map<string, 'present' | 'absent'>>(new Map());
     const [loadingAttendance, setLoadingAttendance] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [paymentAction, setPaymentAction] = useState<{ month: string, remaining: number } | null>(null);
+    const [customAmount, setCustomAmount] = useState<string>('');
+
     const currentYear = new Date().getFullYear();
+
+     useEffect(() => {
+        const channel = supabase.channel(`student-profile-${initialStudent.id}`)
+            .on('postgres_changes', {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'students',
+                filter: `id=eq.${initialStudent.id}`
+            }, (payload) => {
+                setStudent(payload.new as Student);
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [initialStudent.id]);
+
 
     const fetchAttendanceData = useCallback(async () => {
         if (!student.class || !student.roll_number) {
@@ -70,14 +110,41 @@ const StudentProfileModal: React.FC<StudentProfileModalProps> = ({ student, clas
         fetchAttendanceData();
     }, [fetchAttendanceData]);
 
-    const handleMarkAsPaid = async (month: keyof Student) => {
+    const handlePayment = async (month: keyof Student, amountToPay: number) => {
+        if (!amountToPay || amountToPay <= 0) {
+            setError('Invalid payment amount.');
+            return;
+        }
         setUpdatingFee(month);
         setError(null);
-        const updateData = { [month]: new Date().toISOString() };
 
-        const { error } = await supabase.from('students').update(updateData).eq('id', student.id);
+        const { data: currentStudentData, error: fetchError } = await supabase
+            .from('students').select(month).eq('id', student.id).single();
+        
+        if (fetchError) {
+            setError(`Failed to fetch latest data: ${fetchError.message}`);
+            setUpdatingFee(null);
+            return;
+        }
+
+        const currentStatus = currentStudentData?.[month];
+        const newPaymentEntry = `${amountToPay}=d=${new Date().toISOString()}`;
+        
+        let newStatus = newPaymentEntry;
+        const paidSoFar = parsePaidAmount(String(currentStatus));
+
+        if (paidSoFar > 0 && paidSoFar !== Infinity) {
+            newStatus = `${currentStatus};${newPaymentEntry}`;
+        }
+
+        const { error } = await supabase.from('students').update({ [month]: newStatus }).eq('id', student.id);
+        
         if (error) {
             setError(`Failed to update fee: ${error.message}`);
+        } else {
+            // Optimistic update handled by Supabase realtime, just close the popover.
+            setPaymentAction(null);
+            setCustomAmount('');
         }
         setUpdatingFee(null);
     };
@@ -86,32 +153,94 @@ const StudentProfileModal: React.FC<StudentProfileModalProps> = ({ student, clas
     const feeAmount = studentClassInfo?.school_fees || 0;
 
     const { totalDues, totalPaid } = months.reduce((acc, month) => {
-        const status = student[month];
-        if (status === 'Dues') {
-            acc.totalDues += feeAmount;
-        } else if (status && status !== 'undefined') {
-            acc.totalPaid += feeAmount;
+        const paidForMonthRaw = parsePaidAmount(String(student[month]));
+        const paidForMonth = paidForMonthRaw === Infinity ? feeAmount : paidForMonthRaw;
+        
+        acc.totalPaid += paidForMonth;
+
+        if (student[month] && student[month] !== 'undefined' && paidForMonth < feeAmount) {
+            acc.totalDues += (feeAmount - paidForMonth);
         }
         return acc;
     }, { totalDues: 0, totalPaid: 0 });
 
     const renderFeeStatus = (month: keyof Student) => {
         const status = student[month];
-        if (status === 'undefined' || !status) return <span className="fee-badge bg-gray-200 text-gray-800">Pending</span>;
-        if (status === 'Dues') return (
+        const paidAmountRaw = parsePaidAmount(String(status));
+        const paidAmount = paidAmountRaw === Infinity ? feeAmount : paidAmountRaw;
+        const isFullyPaid = paidAmount >= feeAmount && feeAmount > 0;
+        const remainingDue = feeAmount - paidAmount;
+
+        const isActionOpen = paymentAction?.month === month;
+
+        if (isFullyPaid) {
+            return <span className="fee-badge bg-green-100 text-green-800">Paid</span>;
+        }
+        if (paidAmount > 0) {
+            return (
+                <div className="flex items-center gap-2 relative">
+                    <span className="fee-badge bg-yellow-100 text-yellow-800" title={`Paid: ₹${paidAmount}`}>
+                        Partially Paid (₹{remainingDue} due)
+                    </span>
+                    <button 
+                        onClick={() => setPaymentAction({ month, remaining: remainingDue })}
+                        disabled={!!updatingFee}
+                        className="px-2 py-0.5 text-xs text-white bg-blue-600 rounded hover:bg-blue-700 disabled:bg-gray-400"
+                    >
+                        Pay
+                    </button>
+                    {isActionOpen && renderPaymentPopover(month, remainingDue)}
+                </div>
+            );
+        }
+        if (status === 'Dues') {
+             return (
+                <div className="flex items-center gap-2 relative">
+                    <span className="fee-badge bg-red-100 text-red-800">Dues</span>
+                    <button 
+                        onClick={() => setPaymentAction({ month, remaining: feeAmount })}
+                        disabled={!!updatingFee}
+                        className="px-2 py-0.5 text-xs text-white bg-green-600 rounded hover:bg-green-700 disabled:bg-gray-400"
+                    >
+                        {updatingFee === month ? <Spinner size="3" /> : 'Pay'}
+                    </button>
+                     {isActionOpen && renderPaymentPopover(month, feeAmount)}
+                </div>
+            );
+        }
+        return <span className="fee-badge bg-gray-200 text-gray-800">Pending</span>;
+    };
+    
+    const renderPaymentPopover = (month: keyof Student, remaining: number) => (
+        <div className="absolute top-full right-0 mt-2 w-64 bg-white border border-gray-300 rounded-lg shadow-xl z-10 p-4 space-y-3">
+            <h4 className="font-bold text-sm text-gray-800">Record Payment for {month}</h4>
+            <button
+                onClick={() => handlePayment(month, remaining)}
+                disabled={updatingFee === month}
+                className="w-full text-center px-3 py-2 text-sm bg-green-500 text-white rounded-md hover:bg-green-600 disabled:bg-gray-400"
+            >
+                {updatingFee === month ? <Spinner size="4" /> : `Pay Full Amount (₹${remaining})`}
+            </button>
             <div className="flex items-center gap-2">
-                <span className="fee-badge bg-red-100 text-red-800">Dues</span>
-                <button 
-                    onClick={() => handleMarkAsPaid(month)}
-                    disabled={!!updatingFee}
-                    className="px-2 py-0.5 text-xs text-white bg-green-600 rounded hover:bg-green-700 disabled:bg-gray-400"
+                <input
+                    type="number"
+                    value={customAmount}
+                    onChange={(e) => setCustomAmount(e.target.value)}
+                    placeholder="Custom amount"
+                    max={remaining}
+                    className="flex-grow block w-full px-2 py-1.5 border border-gray-300 rounded-md text-sm"
+                />
+                <button
+                    onClick={() => handlePayment(month, Number(customAmount))}
+                    disabled={updatingFee === month || !customAmount || Number(customAmount) <= 0 || Number(customAmount) > remaining}
+                    className="px-3 py-1.5 text-sm bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:bg-gray-400"
                 >
-                    {updatingFee === month ? <Spinner size="3" /> : 'Pay'}
+                    Pay
                 </button>
             </div>
-        );
-        return <span className="fee-badge bg-green-100 text-green-800" title={`Paid on ${new Date(status).toLocaleDateString()}`}>Paid</span>;
-    };
+            <button onClick={() => { setPaymentAction(null); setCustomAmount(''); }} className="absolute -top-2 -right-2 text-xs bg-gray-600 text-white w-5 h-5 rounded-full">&times;</button>
+        </div>
+    );
     
     const generateCalendarDays = (year: number, month: number) => {
         const days = [];
@@ -233,7 +362,7 @@ const StudentProfileModal: React.FC<StudentProfileModalProps> = ({ student, clas
             </div>
             <style>{`
                 .info-header { display: flex; align-items: center; gap: 0.5rem; font-size: 1.125rem; font-weight: 700; color: #374151; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.5rem; margin-bottom: 1rem; }
-                .fee-badge { padding: 0.125rem 0.5rem; font-size: 0.75rem; font-weight: 500; border-radius: 9999px; }
+                .fee-badge { padding: 0.125rem 0.5rem; font-size: 0.75rem; font-weight: 500; border-radius: 9999px; white-space: nowrap; }
             `}</style>
         </div>
     );

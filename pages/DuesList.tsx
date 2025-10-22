@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../services/supabase';
 import { Student, Class } from '../types';
@@ -17,6 +16,26 @@ interface DuesData {
 }
 
 const months: (keyof Student)[] = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+
+const parsePaidAmount = (status: string | undefined | null): number => {
+    if (!status || status === 'undefined' || status === 'Dues') {
+        return 0;
+    }
+    const isoDateRegex = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+    if (isoDateRegex.test(status)) {
+        return Infinity; // Represents a legacy full payment
+    }
+    const payments = status.split(';');
+    return payments.reduce((total, payment) => {
+        const parts = payment.split('=d=');
+        if (parts.length === 2) {
+            const amount = parseFloat(parts[0]);
+            return total + (isNaN(amount) ? 0 : amount);
+        }
+        return total;
+    }, 0);
+};
+
 
 const DuesList: React.FC = () => {
     const [loading, setLoading] = useState(true);
@@ -48,15 +67,25 @@ const DuesList: React.FC = () => {
                 const fee = classFeesMap.get(student.class) || 0;
                 if (fee === 0) continue;
 
-                const duesMonths = months.filter(month => student[month] === 'Dues').length;
+                let studentTotalDues = 0;
+                months.forEach(month => {
+                    const status = student[month];
+                    if (status && status !== 'undefined') {
+                        const paidAmountRaw = parsePaidAmount(String(status));
+                        const paidAmount = paidAmountRaw === Infinity ? fee : paidAmountRaw;
+                        if (paidAmount < fee) {
+                            studentTotalDues += (fee - paidAmount);
+                        }
+                    }
+                });
 
-                if (duesMonths > 0) {
-                    const dueAmount = duesMonths * fee;
+
+                if (studentTotalDues > 0) {
                     if (!aggregatedDues[student.class]) {
                         aggregatedDues[student.class] = { students: [], totalDues: 0 };
                     }
-                    aggregatedDues[student.class].students.push({ ...student, dueAmount });
-                    aggregatedDues[student.class].totalDues += dueAmount;
+                    aggregatedDues[student.class].students.push({ ...student, dueAmount: studentTotalDues });
+                    aggregatedDues[student.class].totalDues += studentTotalDues;
                 }
             }
             setDuesData(aggregatedDues);
@@ -132,7 +161,6 @@ const DuesList: React.FC = () => {
                 </div>
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {/* Fix: Use Object.keys to iterate over duesData for correct type inference. */}
                     {Object.keys(duesData).map((className) => {
                         const data = duesData[className];
                         return (

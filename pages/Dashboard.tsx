@@ -33,6 +33,28 @@ interface DashboardData {
     admissionsByMonth: { label: string; value: number }[];
 }
 
+const parsePaidAmount = (status: string | undefined | null): number => {
+    if (!status || status === 'undefined' || status === 'Dues') {
+        return 0;
+    }
+
+    const isoDateRegex = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+    if (isoDateRegex.test(status)) {
+        return Infinity; // Represents a legacy full payment
+    }
+
+    const payments = status.split(';');
+    return payments.reduce((total, payment) => {
+        const parts = payment.split('=d=');
+        if (parts.length === 2) {
+            const amount = parseFloat(parts[0]);
+            return total + (isNaN(amount) ? 0 : amount);
+        }
+        return total;
+    }, 0);
+};
+
+
 const Dashboard: React.FC<DashboardProps> = ({ user }) => {
     const [data, setData] = useState<DashboardData | null>(null);
     const [loading, setLoading] = useState(true);
@@ -82,21 +104,31 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
             // Fee calculations
             months.forEach(month => {
                 const status = s[month];
-                 if (status && status !== 'undefined' && status !== 'Dues') {
-                    totalPaid += fee;
-                    if (!paidByClass[s.class!]) paidByClass[s.class!] = 0;
-                    paidByClass[s.class!] += fee;
-                    if (month === currentMonthName) {
-                        if (!currentMonthPaidByClass[s.class!]) currentMonthPaidByClass[s.class!] = 0;
-                        currentMonthPaidByClass[s.class!] += fee;
-                    }
-                } else if (status === 'Dues') {
-                    totalDues += fee;
+                if (!status || status === 'undefined') return;
+
+                const paidForMonthRaw = parsePaidAmount(String(status));
+                const paidForMonth = paidForMonthRaw === Infinity ? fee : paidForMonthRaw;
+
+                totalPaid += paidForMonth;
+
+                if (!paidByClass[s.class!]) paidByClass[s.class!] = 0;
+                paidByClass[s.class!] += paidForMonth;
+                
+                if (month === currentMonthName) {
+                    if (!currentMonthPaidByClass[s.class!]) currentMonthPaidByClass[s.class!] = 0;
+                    currentMonthPaidByClass[s.class!] += paidForMonth;
+                }
+
+                if (paidForMonth < fee) {
+                    const dueForMonth = fee - paidForMonth;
+                    totalDues += dueForMonth;
+
                     if (!duesByClass[s.class!]) duesByClass[s.class!] = 0;
-                    duesByClass[s.class!] += fee;
+                    duesByClass[s.class!] += dueForMonth;
+
                     if (month === currentMonthName) {
                         if (!currentMonthDuesByClass[s.class!]) currentMonthDuesByClass[s.class!] = 0;
-                        currentMonthDuesByClass[s.class!] += fee;
+                        currentMonthDuesByClass[s.class!] += dueForMonth;
                     }
                 }
             });

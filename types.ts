@@ -83,7 +83,13 @@ export interface Student {
   caste?: string;
   blood_group?: string;
   previous_school_name?: string;
-  // Monthly fee tracking
+  // Monthly fee tracking can have the following string values:
+  // - 'undefined' or null: Not yet billed.
+  // - 'Dues': Billed but completely unpaid.
+  // - An ISO date string (legacy): Represents a full payment made before the partial payment system.
+  // - A payment string: Represents one or more partial payments.
+  //   - Single payment: "AMOUNT=d=ISODATE" (e.g., "250=d=2024-07-15T10:30:00.000Z")
+  //   - Multiple payments are separated by semicolons: "250=d=DATE1;150=d=DATE2"
   january?: string;
   february?: string;
   march?: string;
