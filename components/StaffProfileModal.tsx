@@ -17,6 +17,9 @@ interface StaffProfileModalProps {
     onPaymentSuccess: () => void;
 }
 
+const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+
 const StaffProfileModal: React.FC<StaffProfileModalProps> = ({ staff, onClose, onPaymentSuccess }) => {
     const [salaryRecords, setSalaryRecords] = useState<SalaryRecord[]>([]);
     const [loadingRecords, setLoadingRecords] = useState(true);
@@ -24,6 +27,10 @@ const StaffProfileModal: React.FC<StaffProfileModalProps> = ({ staff, onClose, o
     const [paymentNotes, setPaymentNotes] = useState('');
     const [paying, setPaying] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    const [attendanceStatus, setAttendanceStatus] = useState<Map<string, 'present' | 'absent'>>(new Map());
+    const [loadingAttendance, setLoadingAttendance] = useState(true);
+    const currentYear = new Date().getFullYear();
 
     const fetchSalaryRecords = useCallback(async () => {
         setLoadingRecords(true);
@@ -41,8 +48,38 @@ const StaffProfileModal: React.FC<StaffProfileModalProps> = ({ staff, onClose, o
         setLoadingRecords(false);
     }, [staff.staff_id]);
 
+    const fetchAttendanceData = useCallback(async () => {
+        setLoadingAttendance(true);
+        const { data, error } = await supabase
+            .from('staff_attendence')
+            .select('date, staff_id')
+            .gte('date', `${currentYear}-01-01`)
+            .lte('date', `${currentYear}-12-31`);
+
+        if (error) {
+            setError(error.message); // Reuse existing error state
+        } else {
+            const statusMap = new Map<string, 'present' | 'absent'>();
+            data.forEach(record => {
+                if (record.date) {
+                    const presentIds = new Set(record.staff_id ? record.staff_id.split(',') : []);
+                    if (presentIds.has(staff.staff_id)) {
+                        statusMap.set(record.date, 'present');
+                    } else {
+                        // If an attendance record exists for this day but the staff isn't in it, they are absent.
+                        statusMap.set(record.date, 'absent');
+                    }
+                }
+            });
+            setAttendanceStatus(statusMap);
+        }
+        setLoadingAttendance(false);
+    }, [staff.staff_id, currentYear]);
+
+
     useEffect(() => {
         fetchSalaryRecords();
+        fetchAttendanceData();
         
         const channel = supabase.channel(`salary-records-${staff.staff_id}`)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'salary_records', filter: `staff_id=eq.${staff.staff_id}` }, 
@@ -55,7 +92,7 @@ const StaffProfileModal: React.FC<StaffProfileModalProps> = ({ staff, onClose, o
             supabase.removeChannel(channel);
         };
 
-    }, [fetchSalaryRecords, staff.staff_id]);
+    }, [fetchSalaryRecords, fetchAttendanceData, staff.staff_id]);
     
     const handlePaySalary = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -93,6 +130,38 @@ const StaffProfileModal: React.FC<StaffProfileModalProps> = ({ staff, onClose, o
         setPaying(false);
     }
     
+     const generateCalendarDays = (year: number, month: number) => {
+        const days = [];
+        const date = new Date(year, month, 1);
+        const firstDayIndex = date.getDay();
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+        for (let i = 0; i < firstDayIndex; i++) {
+            days.push(<div key={`empty-${i}`} className="w-8 h-8" />);
+        }
+
+        for (let day = 1; day <= daysInMonth; day++) {
+            const fullDate = new Date(year, month, day);
+            const dateString = fullDate.toISOString().split('T')[0];
+            const dayOfWeek = fullDate.getDay();
+
+            let statusClass = 'bg-gray-100 text-gray-700 hover:bg-gray-200';
+            const status = attendanceStatus.get(dateString);
+
+            if (status === 'present') statusClass = 'bg-green-500 text-white font-bold';
+            else if (status === 'absent') statusClass = 'bg-red-500 text-white font-bold';
+            else if (dayOfWeek === 0) statusClass = 'bg-yellow-400 text-white';
+
+            days.push(
+                <div key={day} className={`w-8 h-8 flex items-center justify-center rounded-full text-xs transition-colors duration-200 ${statusClass}`}>
+                    {day}
+                </div>
+            );
+        }
+        return days;
+    };
+
+
     return (
          <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center z-50 p-4">
             <div className="bg-gray-50 p-8 rounded-2xl shadow-2xl w-full max-w-7xl max-h-[95vh] flex flex-col">
@@ -187,6 +256,31 @@ const StaffProfileModal: React.FC<StaffProfileModalProps> = ({ staff, onClose, o
                                      )
                                     }
                                 </div>
+                            </div>
+
+                            <div className="bg-white p-6 rounded-xl shadow-md">
+                                <h4 className="info-header">Attendance Calendar {currentYear}</h4>
+                                 <div className="flex items-center gap-4 text-xs mb-4 text-gray-600">
+                                    <span className="flex items-center gap-1.5"><span className="w-3 h-3 bg-green-500 rounded-sm"></span>Present</span>
+                                    <span className="flex items-center gap-1.5"><span className="w-3 h-3 bg-red-500 rounded-sm"></span>Absent</span>
+                                    <span className="flex items-center gap-1.5"><span className="w-3 h-3 bg-yellow-400 rounded-sm"></span>Holiday</span>
+                                </div>
+                                {loadingAttendance ? <div className="flex justify-center items-center h-64"><Spinner size="10"/></div> :
+                                (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                                        {monthNames.map((name, index) => (
+                                            <div key={name}>
+                                                <h5 className="font-bold text-center mb-2">{name}</h5>
+                                                <div className="grid grid-cols-7 gap-1 text-center text-xs font-semibold text-gray-500 mb-1">
+                                                    <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
+                                                </div>
+                                                <div className="grid grid-cols-7 gap-1">
+                                                    {generateCalendarDays(currentYear, index)}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                         </div>
                    </div>

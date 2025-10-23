@@ -90,6 +90,14 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                         <ReportIcon />
                         <span className="mx-4">Attendance Report</span>
                     </NavLink>
+                    <NavLink to="/staff-attendance" onClick={onClose} className={({ isActive }) => `${linkClasses} ${isActive ? activeLinkClasses : ''}`}>
+                        <AttendanceIcon />
+                        <span className="mx-4">Staff Attendance</span>
+                    </NavLink>
+                    <NavLink to="/staff-attendance-report" onClick={onClose} className={({ isActive }) => `${linkClasses} ${isActive ? activeLinkClasses : ''}`}>
+                        <ReportIcon />
+                        <span className="mx-4">Staff Attendance Report</span>
+                    </NavLink>
                     <NavLink to="/results" onClick={onClose} className={({ isActive }) => `${linkClasses} ${isActive ? activeLinkClasses : ''}`}>
                         <ResultsIcon />
                         <span className="mx-4">Results</span>

@@ -122,6 +122,14 @@ export interface Attendance {
   absent?: string;  // Comma-separated roll numbers
 }
 
+export interface StaffAttendance {
+  id?: number;
+  uid: string;
+  staff_id?: string; // Comma-separated staff IDs
+  date: string; // 'YYYY-MM-DD'
+  created_at?: string;
+}
+
 export interface FeeType {
   id: number;
   uid: string;

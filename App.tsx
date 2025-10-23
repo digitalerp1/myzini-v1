@@ -21,6 +21,8 @@ import ExternalPage from './pages/ExternalPage';
 import { externalLinks } from './services/externalLinks';
 import DataExport from './pages/DataExport';
 import GeneratorTools from './pages/GeneratorTools';
+import StaffAttendance from './pages/StaffAttendance';
+import StaffAttendanceReport from './pages/StaffAttendanceReport';
 
 const App: React.FC = () => {
   const [session, setSession] = useState<Session | null>(null);
@@ -74,6 +76,8 @@ const App: React.FC = () => {
         <Route path="/dues-list" element={<DuesList />} />
         <Route path="/attendance" element={<Attendance />} />
         <Route path="/attendance-report" element={<AttendanceReport />} />
+        <Route path="/staff-attendance" element={<StaffAttendance />} />
+        <Route path="/staff-attendance-report" element={<StaffAttendanceReport />} />
         <Route path="/results" element={<Results />} />
         <Route path="/query-helper" element={<QueryHelper />} />
         <Route path="/data-export" element={<DataExport />} />
