@@ -6,8 +6,8 @@ export interface ExternalLink {
 
 export const externalLinks: ExternalLink[] = [
     { 
-        name: "School Info (Wikipedia)", 
-        url: "https://en.wikipedia.org/wiki/School", 
+        name: "RESIZE IMAGE", 
+        url: "https://image.pi7.org/reduce-image-size-in-kb", 
         path: "external/school-info" 
     },
     { 
