@@ -89,16 +89,25 @@ const DriverModal: React.FC<DriverModalProps> = ({ driver, onClose, onSave }) =>
 
         const dataToSave = { ...formData, uid: user.id };
 
+        let upsertError: any = null;
+
         if (driver) { // Editing existing driver
-            const { error } = await supabase.from('driver').update(dataToSave).eq('id', driver.id);
-            if (error) setError(error.message);
-            else onSave();
+            const dataToUpsert = { ...dataToSave, id: driver.id };
+            const { error } = await supabase.from('driver').upsert(dataToUpsert);
+            upsertError = error;
         } else { // Adding new driver
             const driver_id = generateRandomId();
-            const { error } = await supabase.from('driver').insert([{ ...dataToSave, driver_id }]);
-            if (error) setError(error.message);
-            else onSave();
+            const dataToUpsert = { ...dataToSave, driver_id };
+            const { error } = await supabase.from('driver').upsert(dataToUpsert);
+            upsertError = error;
         }
+
+        if (upsertError) {
+            setError(upsertError.message);
+        } else {
+            onSave();
+        }
+        
         setSaving(false);
     };
 
