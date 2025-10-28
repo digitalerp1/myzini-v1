@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { supabase } from '../services/supabase';
 import Spinner from '../components/Spinner';
@@ -10,7 +9,7 @@ const DataExport: React.FC = () => {
 
     const tables = [
         'owner', 'staff', 'students', 'classes', 'subjects', 
-        'assign_class', 'attendance', 'expenses', 'fees_types', 'salary_records'
+        'assign_class', 'attendance', 'expenses', 'fees_types', 'salary_records', 'driver'
     ];
 
     const removeUidFromRecords = (records: any[]) => {

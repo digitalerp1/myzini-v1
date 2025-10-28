@@ -165,3 +165,18 @@ export interface ExamResult {
   };
   created_at: string;
 }
+
+export interface Driver {
+  id: number;
+  created_at: string;
+  uid: string;
+  driver_id: string;
+  name: string;
+  mobile: string;
+  aadhar?: string;
+  photo_url?: string;
+  address?: string;
+  van_number: string;
+  van_image_url?: string;
+  driving_licence?: string;
+}

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../services/supabase';
 import { Class, Student } from '../types';
@@ -47,11 +46,9 @@ const Attendance: React.FC = () => {
             setError(error.message);
             setStudents([]);
         } else {
-            // FIX: Explicitly type the student data to ensure correct type inference downstream.
             const studentData: Student[] = data || [];
             const validStudents = studentData.filter(s => s.roll_number);
             setStudents(validStudents);
-            // By default, mark all students as present
             const allRolls = new Set(validStudents.map(s => s.roll_number!));
             setPresentRolls(allRolls);
         }
@@ -70,14 +67,14 @@ const Attendance: React.FC = () => {
         });
     };
 
-    const markAll = (present: boolean) => {
-        if (present) {
+    const toggleAll = (check: boolean) => {
+        if (check) {
             const allRolls = new Set(students.map(s => s.roll_number!));
             setPresentRolls(allRolls);
         } else {
             setPresentRolls(new Set());
         }
-    };
+    }
     
     const handleSubmit = async () => {
         if (!selectedClass) return;
@@ -153,6 +150,9 @@ const Attendance: React.FC = () => {
         );
     }
     
+    const allChecked = presentRolls.size === students.length && students.length > 0;
+    const isIndeterminate = presentRolls.size > 0 && presentRolls.size < students.length;
+
     // View for marking attendance for a selected class
     return (
         <div className="bg-white p-8 rounded-xl shadow-lg">
@@ -167,8 +167,9 @@ const Attendance: React.FC = () => {
                     <p className="text-gray-600">Date: {new Date().toLocaleDateString()}</p>
                 </div>
                 <div className="flex gap-2">
-                    <button onClick={() => markAll(true)} className="px-4 py-2 bg-green-100 text-green-800 rounded-md hover:bg-green-200 transition-colors">Mark All Present</button>
-                    <button onClick={() => markAll(false)} className="px-4 py-2 bg-red-100 text-red-800 rounded-md hover:bg-red-200 transition-colors">Mark All Absent</button>
+                   <p className="text-gray-600 self-center">
+                        <strong>{presentRolls.size}</strong> of <strong>{students.length}</strong> present
+                    </p>
                 </div>
             </div>
             
@@ -181,21 +182,52 @@ const Attendance: React.FC = () => {
             {loading ? <div className="flex justify-center items-center h-96"><Spinner size="12" /></div> :
             students.length === 0 ? <p className="text-gray-500 text-center">No students with roll numbers found in this class.</p> :
             (
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                    {students.map(student => (
-                        <label key={student.id} className="relative block border-2 rounded-lg p-3 cursor-pointer transition-all"
-                            style={{borderColor: presentRolls.has(student.roll_number!) ? '#4f46e5' : '#e5e7eb'}}>
-                            <input 
-                                type="checkbox"
-                                checked={presentRolls.has(student.roll_number!)}
-                                onChange={() => handleTogglePresence(student.roll_number!)}
-                                className="absolute top-2 right-2 h-5 w-5 text-primary rounded border-gray-300 focus:ring-primary"
-                            />
-                            <img src={student.photo_url || `https://ui-avatars.com/api/?name=${student.name}&background=random`} alt={student.name} className="w-full h-32 object-cover rounded-md mb-2"/>
-                            <p className="font-bold text-gray-800 truncate">{student.name}</p>
-                            <p className="text-sm text-gray-500">Roll: {student.roll_number}</p>
-                        </label>
-                    ))}
+                <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                            <tr>
+                                <th scope="col" className="p-4">
+                                    <input type="checkbox" className="h-4 w-4 text-primary border-gray-300 rounded focus:ring-primary"
+                                     checked={allChecked}
+                                     ref={el => el && (el.indeterminate = isIndeterminate)}
+                                     onChange={(e) => toggleAll(e.target.checked)}
+                                    />
+                                </th>
+                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Student
+                                </th>
+                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Roll Number
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                            {students.map(student => (
+                                <tr key={student.id} className={presentRolls.has(student.roll_number!) ? 'bg-indigo-50' : ''}>
+                                    <td className="p-4">
+                                        <input type="checkbox"
+                                          checked={presentRolls.has(student.roll_number!)}
+                                          onChange={() => handleTogglePresence(student.roll_number!)}
+                                          className="h-4 w-4 text-primary border-gray-300 rounded focus:ring-primary"
+                                        />
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap">
+                                        <div className="flex items-center">
+                                            <div className="flex-shrink-0 h-10 w-10">
+                                                <img className="h-10 w-10 rounded-full object-cover" src={student.photo_url || `https://ui-avatars.com/api/?name=${student.name}&background=random`} alt={student.name} />
+                                            </div>
+                                            <div className="ml-4">
+                                                <div className="text-sm font-medium text-gray-900">{student.name}</div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap">
+                                        <div className="text-sm text-gray-900">{student.roll_number}</div>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
                 </div>
             )}
             

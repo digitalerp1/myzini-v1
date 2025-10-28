@@ -23,6 +23,7 @@ import DataExport from './pages/DataExport';
 import GeneratorTools from './pages/GeneratorTools';
 import StaffAttendance from './pages/StaffAttendance';
 import StaffAttendanceReport from './pages/StaffAttendanceReport';
+import Transport from './pages/Transport';
 
 const App: React.FC = () => {
   const [session, setSession] = useState<Session | null>(null);
@@ -79,6 +80,7 @@ const App: React.FC = () => {
         <Route path="/staff-attendance" element={<StaffAttendance />} />
         <Route path="/staff-attendance-report" element={<StaffAttendanceReport />} />
         <Route path="/results" element={<Results />} />
+        <Route path="/transport" element={<Transport />} />
         <Route path="/query-helper" element={<QueryHelper />} />
         <Route path="/data-export" element={<DataExport />} />
         <Route path="/generator-tools" element={<GeneratorTools />} />

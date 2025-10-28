@@ -18,6 +18,7 @@ import LogoutIcon from './icons/LogoutIcon';
 import ExternalLinkIcon from './icons/ExternalLinkIcon';
 import ArchiveIcon from './icons/ArchiveIcon';
 import ToolsIcon from './icons/ToolsIcon';
+import TransportIcon from './icons/TransportIcon';
 
 interface SidebarProps {
     isOpen: boolean;
@@ -101,6 +102,10 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                     <NavLink to="/results" onClick={onClose} className={({ isActive }) => `${linkClasses} ${isActive ? activeLinkClasses : ''}`}>
                         <ResultsIcon />
                         <span className="mx-4">Results</span>
+                    </NavLink>
+                     <NavLink to="/transport" onClick={onClose} className={({ isActive }) => `${linkClasses} ${isActive ? activeLinkClasses : ''}`}>
+                        <TransportIcon />
+                        <span className="mx-4">Transport</span>
                     </NavLink>
                     <NavLink to="/generator-tools" onClick={onClose} className={({ isActive }) => `${linkClasses} ${isActive ? activeLinkClasses : ''}`}>
                         <ToolsIcon />

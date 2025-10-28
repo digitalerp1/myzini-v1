@@ -90,7 +90,7 @@ const AddOtherFeesModal: React.FC<AddOtherFeesModalProps> = ({ onClose, onSucces
 
             const { data: studentsToUpdate, error: fetchError } = await supabase
                 .from('students')
-                .select('id, other_fees')
+                .select('id, uid, other_fees')
                 .in('id', selectedStudentIds);
             
             if(fetchError) throw fetchError;
@@ -104,6 +104,7 @@ const AddOtherFeesModal: React.FC<AddOtherFeesModalProps> = ({ onClose, onSucces
                 const existingFees = student.other_fees || [];
                 return {
                     id: student.id,
+                    uid: student.uid, // Fix: Include UID for composite key matching
                     other_fees: [...existingFees, newFee],
                 };
             });
