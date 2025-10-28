@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../services/supabase';
-import { Student, Class, Attendance } from '../types';
+import { Student, Class, Attendance, OtherFee } from '../types';
 import Spinner from './Spinner';
 import UserCircleIcon from './icons/UserCircleIcon';
 import MailIcon from './icons/MailIcon';
@@ -164,6 +164,24 @@ const StudentProfileModal: React.FC<StudentProfileModalProps> = ({ student: init
         return acc;
     }, { totalDues: 0, totalPaid: 0 });
 
+    const otherFeesSummary = (student.other_fees || []).reduce((acc, fee) => {
+        if (fee.paid_date) {
+            acc.paid += fee.amount;
+        } else {
+            acc.dues += fee.amount;
+        }
+        return acc;
+    }, { paid: 0, dues: 0 });
+
+    const finalTotalPaid = totalPaid + otherFeesSummary.paid;
+    const finalTotalDues = totalDues + otherFeesSummary.dues;
+
+    const attendanceSummary = Array.from(attendanceStatus.values()).reduce((acc, status) => {
+        if (status === 'present') acc.present++;
+        if (status === 'absent') acc.absent++;
+        return acc;
+    }, { present: 0, absent: 0 });
+
     const renderFeeStatus = (month: keyof Student) => {
         const status = student[month];
         const paidAmountRaw = parsePaidAmount(String(status));
@@ -319,8 +337,8 @@ const StudentProfileModal: React.FC<StudentProfileModalProps> = ({ student: init
                                 <h4 className="text-xl font-bold text-gray-800 mb-4">Fee Records</h4>
                                 <div className="grid grid-cols-3 gap-4 mb-4">
                                     <FeeStatCard label="Monthly Fee" value={`₹${feeAmount.toLocaleString()}`} color="blue" />
-                                    <FeeStatCard label="Total Paid" value={`₹${totalPaid.toLocaleString()}`} color="green" />
-                                    <FeeStatCard label="Total Dues" value={`₹${totalDues.toLocaleString()}`} color="red" />
+                                    <FeeStatCard label="Total Paid" value={`₹${finalTotalPaid.toLocaleString()}`} color="green" />
+                                    <FeeStatCard label="Total Dues" value={`₹${finalTotalDues.toLocaleString()}`} color="red" />
                                 </div>
                                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                                     {months.map(month => (
@@ -334,8 +352,8 @@ const StudentProfileModal: React.FC<StudentProfileModalProps> = ({ student: init
                             <div className="bg-white p-6 rounded-xl shadow-md">
                                 <h4 className="text-xl font-bold text-gray-800 mb-2">Attendance Calendar {currentYear}</h4>
                                  <div className="flex items-center gap-4 text-xs mb-4 text-gray-600">
-                                    <span className="flex items-center gap-1.5"><span className="w-3 h-3 bg-green-500 rounded-sm"></span>Present</span>
-                                    <span className="flex items-center gap-1.5"><span className="w-3 h-3 bg-red-500 rounded-sm"></span>Absent</span>
+                                    <span className="flex items-center gap-1.5"><span className="w-3 h-3 bg-green-500 rounded-sm"></span>Present ({attendanceSummary.present})</span>
+                                    <span className="flex items-center gap-1.5"><span className="w-3 h-3 bg-red-500 rounded-sm"></span>Absent ({attendanceSummary.absent})</span>
                                     <span className="flex items-center gap-1.5"><span className="w-3 h-3 bg-yellow-400 rounded-sm"></span>Holiday</span>
                                 </div>
                                 {loadingAttendance ? <div className="flex justify-center items-center h-64"><Spinner size="10"/></div> :

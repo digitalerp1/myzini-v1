@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../services/supabase';
 import { Staff, SalaryRecord } from '../types';
@@ -32,6 +31,30 @@ const StaffProfileModal: React.FC<StaffProfileModalProps> = ({ staff, onClose, o
     const [loadingAttendance, setLoadingAttendance] = useState(true);
     const currentYear = new Date().getFullYear();
 
+    // Calculated salary state
+    const [totalPaid, setTotalPaid] = useState(0);
+    const [netDues, setNetDues] = useState(0);
+
+    const calculateSalaryDues = useCallback((records: SalaryRecord[]) => {
+        const paid = records.reduce((sum, record) => sum + record.amount, 0);
+        setTotalPaid(paid);
+        
+        const joinDate = new Date(staff.joining_date);
+        const now = new Date();
+        
+        let monthsPassed = (now.getFullYear() - joinDate.getFullYear()) * 12 + (now.getMonth() - joinDate.getMonth());
+        // If joining date is in the current month, don't count it yet unless it's the 1st
+        if (now.getDate() < joinDate.getDate() && now.getMonth() === joinDate.getMonth() && now.getFullYear() === joinDate.getFullYear()) {
+            monthsPassed -= 1;
+        }
+        if (monthsPassed < 0) monthsPassed = 0;
+
+        const totalPayable = monthsPassed * staff.salary_amount;
+        const dues = totalPayable + (staff.previous_dues || 0) - paid;
+        setNetDues(dues);
+
+    }, [staff.joining_date, staff.salary_amount, staff.previous_dues]);
+
     const fetchSalaryRecords = useCallback(async () => {
         setLoadingRecords(true);
         const { data, error } = await supabase
@@ -43,10 +66,12 @@ const StaffProfileModal: React.FC<StaffProfileModalProps> = ({ staff, onClose, o
         if (error) {
             setError(error.message);
         } else {
-            setSalaryRecords(data as SalaryRecord[]);
+            const records = data as SalaryRecord[];
+            setSalaryRecords(records);
+            calculateSalaryDues(records);
         }
         setLoadingRecords(false);
-    }, [staff.staff_id]);
+    }, [staff.staff_id, calculateSalaryDues]);
 
     const fetchAttendanceData = useCallback(async () => {
         setLoadingAttendance(true);
@@ -205,9 +230,10 @@ const StaffProfileModal: React.FC<StaffProfileModalProps> = ({ staff, onClose, o
                         <div className="lg:col-span-2 space-y-6">
                             <div className="bg-white p-6 rounded-xl shadow-md">
                                 <h4 className="info-header"><RupeeIcon className="w-5 h-5"/> Salary Overview</h4>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                     <SalaryStatCard label="Monthly Salary" value={`₹${staff.salary_amount.toLocaleString()}`} color="blue" />
-                                    <SalaryStatCard label="Status" value={ staff.is_active ? 'Active' : 'Inactive' } color={staff.is_active ? "green" : "red"} />
+                                    <SalaryStatCard label="Total Paid" value={`₹${totalPaid.toLocaleString()}`} color="green" />
+                                    <SalaryStatCard label="Net Dues" value={`₹${netDues.toLocaleString()}`} color="red" />
                                 </div>
                             </div>
                             

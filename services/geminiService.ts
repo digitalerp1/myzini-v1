@@ -42,6 +42,7 @@ CREATE TABLE public.staff (
   salary_amount numeric,
   total_paid numeric DEFAULT 0,
   total_dues numeric DEFAULT 0,
+  previous_dues numeric DEFAULT 0,
   is_active boolean DEFAULT true,
   -- monthly payment tracking
   january date, february date, march date, april date, may date, june date, july date, august date, september date, october date, november date, december date,
@@ -68,6 +69,7 @@ CREATE TABLE public.students (
   caste text,
   blood_group text,
   previous_school_name text,
+  other_fees jsonb, -- Array of other fees {fees_name, amount, dues_date, paid_date}
   -- monthly fee tracking
   january text DEFAULT 'undefined', february text DEFAULT 'undefined', march text DEFAULT 'undefined', april text DEFAULT 'undefined', may text DEFAULT 'undefined', june text DEFAULT 'undefined', july text DEFAULT 'undefined', august text DEFAULT 'undefined', september text DEFAULT 'undefined', october text DEFAULT 'undefined', november text DEFAULT 'undefined', december text DEFAULT 'undefined',
   previous_dues numeric,
@@ -105,6 +107,14 @@ CREATE TABLE public.attendance (
   date date NOT NULL DEFAULT CURRENT_DATE,
   present text, -- Can be a JSON array of student IDs
   absent text   -- Can be a JSON array of student IDs
+);
+
+CREATE TABLE public.staff_attendence (
+  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  uid uuid NOT NULL,
+  staff_id text, -- Comma-separated staff IDs
+  date date NOT NULL DEFAULT CURRENT_DATE,
+  created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
 CREATE TABLE public.expenses (

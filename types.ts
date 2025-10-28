@@ -28,6 +28,7 @@ export interface Staff {
   total_paid: number;
   total_dues: number;
   is_active: boolean;
+  previous_dues?: number;
 }
 
 export interface SalaryRecord {
@@ -63,6 +64,13 @@ export interface Assignment {
   outgoing_time?: string;
 }
 
+export interface OtherFee {
+  fees_name: string;
+  amount: number;
+  dues_date: string;
+  paid_date?: string;
+}
+
 export interface Student {
   id: number;
   uid: string;
@@ -83,6 +91,7 @@ export interface Student {
   caste?: string;
   blood_group?: string;
   previous_school_name?: string;
+  other_fees?: OtherFee[];
   // Monthly fee tracking can have the following string values:
   // - 'undefined' or null: Not yet billed.
   // - 'Dues': Billed but completely unpaid.

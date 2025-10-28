@@ -7,6 +7,7 @@ import AddDuesModal from '../components/AddDuesModal';
 import EditIcon from '../components/icons/EditIcon';
 import DeleteIcon from '../components/icons/DeleteIcon';
 import AddSpecificDuesModal from '../components/AddSpecificDuesModal';
+import AddOtherFeesModal from '../components/AddOtherFeesModal';
 
 const FeesTypes: React.FC = () => {
     const [feeTypes, setFeeTypes] = useState<FeeType[]>([]);
@@ -15,6 +16,7 @@ const FeesTypes: React.FC = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isDuesModalOpen, setIsDuesModalOpen] = useState(false);
     const [isSpecificDuesModalOpen, setIsSpecificDuesModalOpen] = useState(false);
+    const [isOtherFeesModalOpen, setIsOtherFeesModalOpen] = useState(false);
     const [selectedFeeType, setSelectedFeeType] = useState<FeeType | null>(null);
     const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -77,6 +79,7 @@ const FeesTypes: React.FC = () => {
         setIsModalOpen(false);
         setIsDuesModalOpen(false);
         setIsSpecificDuesModalOpen(false);
+        setIsOtherFeesModalOpen(false);
         setSelectedFeeType(null);
     };
 
@@ -84,24 +87,30 @@ const FeesTypes: React.FC = () => {
         <div className="bg-white p-8 rounded-xl shadow-lg">
             <div className="flex flex-wrap justify-between items-center gap-4 mb-6">
                 <h1 className="text-3xl font-bold text-gray-800">Fee Management</h1>
-                <div className="flex gap-4">
+                <div className="flex flex-wrap gap-4">
                      <button
                         onClick={() => setIsDuesModalOpen(true)}
-                        className="px-5 py-2.5 bg-secondary text-white font-semibold rounded-md hover:bg-green-600 transition-colors"
+                        className="px-4 py-2 bg-secondary text-white font-semibold rounded-md hover:bg-green-600 transition-colors"
                     >
-                        Add Dues (All Students)
+                        Add Monthly Dues (All)
                     </button>
                      <button
                         onClick={() => setIsSpecificDuesModalOpen(true)}
-                        className="px-5 py-2.5 bg-indigo-500 text-white font-semibold rounded-md hover:bg-indigo-600 transition-colors"
+                        className="px-4 py-2 bg-indigo-500 text-white font-semibold rounded-md hover:bg-indigo-600 transition-colors"
                     >
-                        Add Dues (Specific)
+                        Add Monthly Dues (Specific)
+                    </button>
+                    <button
+                        onClick={() => setIsOtherFeesModalOpen(true)}
+                        className="px-4 py-2 bg-purple-600 text-white font-semibold rounded-md hover:bg-purple-700 transition-colors"
+                    >
+                        Add Other Fees
                     </button>
                     <button
                         onClick={handleAdd}
-                        className="px-5 py-2.5 bg-primary text-white font-semibold rounded-md hover:bg-primary-dark transition-colors"
+                        className="px-4 py-2 bg-primary text-white font-semibold rounded-md hover:bg-primary-dark transition-colors"
                     >
-                        Add New Fee Type
+                        + New Fee Type
                     </button>
                 </div>
             </div>
@@ -175,6 +184,15 @@ const FeesTypes: React.FC = () => {
                     onClose={closeModal}
                     onSuccess={(count, months) => {
                          showMessage('success', `Dues for ${months.join(', ')} have been added to ${count} students.`);
+                         closeModal();
+                    }}
+                />
+            )}
+             {isOtherFeesModalOpen && (
+                <AddOtherFeesModal
+                    onClose={closeModal}
+                    onSuccess={(count, feeName) => {
+                         showMessage('success', `${feeName} fee has been added to ${count} students.`);
                          closeModal();
                     }}
                 />

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase } from '../services/supabase';
-import { Student, Staff, Class, Expense } from '../types';
+import { Student, Staff, Class, Expense, Attendance } from '../types';
 import Spinner from '../components/Spinner';
 import StatCard from '../components/StatCard';
 import BarChart from '../components/BarChart';
@@ -31,6 +31,7 @@ interface DashboardData {
     currentMonthPaidByClass: { label: string; value: number }[];
     currentMonthDuesByClass: { label: string; value: number }[];
     admissionsByMonth: { label: string; value: number }[];
+    attendanceByMonth: { label: string; value1: number; value2: number }[];
 }
 
 const parsePaidAmount = (status: string | undefined | null): number => {
@@ -60,7 +61,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
-    const processData = useCallback((students: Student[], staff: Staff[], classes: Class[], expenses: Expense[]) => {
+    const processData = useCallback((students: Student[], staff: Staff[], classes: Class[], expenses: Expense[], attendance: Attendance[]) => {
         // KPI Calculations
         const totalStudents = students.length;
         const totalStaff = staff.length;
@@ -133,6 +134,24 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                 }
             });
         }
+
+        // Attendance by Month
+        const attendanceByMonthData = Array(12).fill(0).map(() => ({ present: 0, absent: 0 }));
+        const currentYear = new Date().getFullYear().toString();
+        for (const record of attendance) {
+            if (record.date.startsWith(currentYear)) {
+                const monthIndex = new Date(record.date).getMonth();
+                const presentCount = record.present ? record.present.split(',').length : 0;
+                const absentCount = record.absent ? record.absent.split(',').length : 0;
+                attendanceByMonthData[monthIndex].present += presentCount;
+                attendanceByMonthData[monthIndex].absent += absentCount;
+            }
+        }
+        const attendanceByMonth = attendanceByMonthData.map((d, i) => ({
+            label: new Date(0, i).toLocaleString('default', { month: 'short' }),
+            value1: d.present,
+            value2: d.absent
+        }));
         
         // Format data for charts
         const formatForChart = (obj: { [key: string]: number }) => Object.entries(obj).map(([label, value]) => ({ label, value })).sort((a,b) => b.value - a.value);
@@ -145,6 +164,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
             currentMonthPaidByClass: formatForChart(currentMonthPaidByClass),
             currentMonthDuesByClass: formatForChart(currentMonthDuesByClass),
             admissionsByMonth,
+            attendanceByMonth
         });
 
     }, []);
@@ -153,23 +173,27 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
         const fetchData = async () => {
             setLoading(true);
             try {
-                const [studentsRes, staffRes, classesRes, expensesRes] = await Promise.all([
+                const currentYear = new Date().getFullYear();
+                const [studentsRes, staffRes, classesRes, expensesRes, attendanceRes] = await Promise.all([
                     supabase.from('students').select('*'),
                     supabase.from('staff').select('id'),
                     supabase.from('classes').select('*'),
-                    supabase.from('expenses').select('amount')
+                    supabase.from('expenses').select('amount'),
+                    supabase.from('attendance').select('date, present, absent').gte('date', `${currentYear}-01-01`).lte('date', `${currentYear}-12-31`)
                 ]);
 
                 if (studentsRes.error) throw studentsRes.error;
                 if (staffRes.error) throw staffRes.error;
                 if (classesRes.error) throw classesRes.error;
                 if (expensesRes.error) throw expensesRes.error;
+                if (attendanceRes.error) throw attendanceRes.error;
 
                 processData(
                     studentsRes.data as Student[],
                     staffRes.data as Staff[],
                     classesRes.data as Class[],
-                    expensesRes.data as Expense[]
+                    expensesRes.data as Expense[],
+                    attendanceRes.data as Attendance[]
                 );
 
             } catch (err: any) {
@@ -214,6 +238,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
 
             {/* Charts */}
             <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+                 <div className="lg:col-span-2 xl:col-span-3">
+                     <GroupedBarChart title="Monthly Attendance Summary" data={data.attendanceByMonth} label1="Present" label2="Absent" color1="bg-green-500" color2="bg-red-500" />
+                 </div>
                  <div className="xl:col-span-3">
                      <GroupedBarChart title="Students per Class" data={data.genderByClass} label1="Boys" label2="Girls" color1="bg-sky-500" color2="bg-pink-500" />
                  </div>

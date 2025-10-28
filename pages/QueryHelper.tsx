@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { startChatWithHistory } from '../services/geminiService';
 import Spinner from '../components/Spinner';
-import { Chat } from '@google/genai';
+import { Chat, Content } from '@google/genai';
 
 interface Message {
     id: string;
@@ -76,24 +76,24 @@ const QueryHelper: React.FC = () => {
         };
         setMessages(prev => [...prev, userMessage]);
 
-        const contents: any = { parts: [] };
-        if (input.trim()) {
-            contents.parts.push({ text: input });
-        }
+        const messageParts = [];
         if (image) {
-            contents.parts.push({
+            messageParts.push({
                 inlineData: {
                     mimeType: image.mimeType,
                     data: image.b64
                 }
             });
         }
+        if (input.trim()) {
+            messageParts.push({ text: input });
+        }
         
         setInput('');
         setImage(null);
 
         try {
-            const responseStream = await chat.sendMessageStream({ contents });
+            const responseStream = await chat.sendMessageStream(messageParts);
             
             let modelResponse = '';
             const modelMessageId = Date.now().toString();
