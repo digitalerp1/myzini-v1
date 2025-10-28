@@ -165,7 +165,8 @@ CREATE TABLE public.driver (
   address text,
   van_number text NOT NULL,
   van_image_url text,
-  driving_licence text
+  driving_licence text,
+  students_list jsonb -- Array of {class, roll_number, name}
 );
 `;
 

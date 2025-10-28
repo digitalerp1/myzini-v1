@@ -179,4 +179,5 @@ export interface Driver {
   van_number: string;
   van_image_url?: string;
   driving_licence?: string;
+  students_list?: { class: string; roll_number: string; name: string }[];
 }

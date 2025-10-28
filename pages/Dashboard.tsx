@@ -102,7 +102,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
             const admissionMonth = new Date(s.registration_date).getMonth();
             admissionsByMonth[admissionMonth].value++;
 
-            // Fee calculations
+            // Monthly Fee calculations
             months.forEach(month => {
                 const status = s[month];
                 if (!status || status === 'undefined') return;
@@ -133,6 +133,17 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                     }
                 }
             });
+
+            // Other Fees calculation
+            if (s.other_fees) {
+                for (const otherFee of s.other_fees) {
+                    if (otherFee.paid_date) {
+                        totalPaid += otherFee.amount;
+                    } else {
+                        totalDues += otherFee.amount;
+                    }
+                }
+            }
         }
 
         // Attendance by Month

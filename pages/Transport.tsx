@@ -3,14 +3,17 @@ import { supabase } from '../services/supabase';
 import { Driver as DriverType } from '../types';
 import Spinner from '../components/Spinner';
 import DriverModal from '../components/DriverModal';
+import DriverProfileModal from '../components/DriverProfileModal';
 import EditIcon from '../components/icons/EditIcon';
 import DeleteIcon from '../components/icons/DeleteIcon';
+import ViewIcon from '../components/icons/ViewIcon';
 
 const Transport: React.FC = () => {
     const [drivers, setDrivers] = useState<DriverType[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
     const [selectedDriver, setSelectedDriver] = useState<DriverType | null>(null);
     const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -58,6 +61,11 @@ const Transport: React.FC = () => {
         setIsModalOpen(true);
     };
 
+    const handleViewProfile = (driver: DriverType) => {
+        setSelectedDriver(driver);
+        setIsProfileModalOpen(true);
+    };
+
     const handleDelete = async (driverId: string) => {
         if (window.confirm('Are you sure you want to delete this driver record?')) {
             const { error } = await supabase.from('driver').delete().eq('driver_id', driverId);
@@ -71,6 +79,7 @@ const Transport: React.FC = () => {
 
     const closeModal = () => {
         setIsModalOpen(false);
+        setIsProfileModalOpen(false);
         setSelectedDriver(null);
     };
 
@@ -102,31 +111,35 @@ const Transport: React.FC = () => {
                     <p className="mt-2">Get started by adding your first driver.</p>
                 </div>
             ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {drivers.map((driver) => (
-                        <div key={driver.id} className="bg-gray-50 rounded-lg shadow-md overflow-hidden">
-                            <div className="p-5">
-                                <div className="flex items-start justify-between">
-                                    <div className="flex items-center gap-4">
-                                        <img src={driver.photo_url || `https://ui-avatars.com/api/?name=${driver.name}`} alt={driver.name} className="w-16 h-16 rounded-full object-cover border-2 border-primary"/>
-                                        <div>
-                                            <h3 className="text-lg font-bold text-gray-900">{driver.name}</h3>
-                                            <p className="text-sm text-gray-500 font-mono">{driver.driver_id}</p>
+                 <div className="overflow-x-auto">
+                    <table className="min-w-full bg-white border border-gray-200">
+                        <thead className="bg-gray-50">
+                            <tr>
+                                <th className="py-3 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Driver Name</th>
+                                <th className="py-3 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Driver ID</th>
+                                <th className="py-3 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Mobile</th>
+                                <th className="py-3 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Van Number</th>
+                                <th className="py-3 px-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200">
+                            {drivers.map((driver) => (
+                                <tr key={driver.id}>
+                                    <td className="py-4 px-4 whitespace-nowrap text-sm font-medium text-gray-900">{driver.name}</td>
+                                    <td className="py-4 px-4 whitespace-nowrap text-sm text-gray-500 font-mono">{driver.driver_id}</td>
+                                    <td className="py-4 px-4 whitespace-nowrap text-sm text-gray-500">{driver.mobile}</td>
+                                    <td className="py-4 px-4 whitespace-nowrap text-sm text-gray-500">{driver.van_number}</td>
+                                    <td className="py-4 px-4 whitespace-nowrap text-sm font-medium text-center">
+                                        <div className="flex justify-center items-center space-x-2">
+                                            <button onClick={() => handleViewProfile(driver)} className="text-blue-600 hover:text-blue-900 transition-colors" title="View Profile"><ViewIcon /></button>
+                                            <button onClick={() => handleEdit(driver)} className="text-indigo-600 hover:text-indigo-900 transition-colors" title="Edit"><EditIcon /></button>
+                                            <button onClick={() => handleDelete(driver.driver_id)} className="text-red-600 hover:text-red-900 transition-colors" title="Delete"><DeleteIcon /></button>
                                         </div>
-                                    </div>
-                                    <div className="flex items-center space-x-2">
-                                        <button onClick={() => handleEdit(driver)} className="text-indigo-600 hover:text-indigo-900 p-1 rounded-full hover:bg-indigo-100" title="Edit"><EditIcon /></button>
-                                        <button onClick={() => handleDelete(driver.driver_id)} className="text-red-600 hover:text-red-900 p-1 rounded-full hover:bg-red-100" title="Delete"><DeleteIcon /></button>
-                                    </div>
-                                </div>
-                                <div className="mt-4 space-y-2 text-sm text-gray-700">
-                                     <p><strong>Mobile:</strong> {driver.mobile}</p>
-                                     <p><strong>Van Number:</strong> {driver.van_number}</p>
-                                     <p><strong>Address:</strong> {driver.address || 'N/A'}</p>
-                                </div>
-                            </div>
-                        </div>
-                    ))}
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
                 </div>
             )}
 
@@ -137,6 +150,16 @@ const Transport: React.FC = () => {
                     onSave={() => {
                         showMessage('success', `Driver ${selectedDriver ? 'updated' : 'added'} successfully.`);
                         closeModal();
+                    }}
+                />
+            )}
+             {isProfileModalOpen && selectedDriver && (
+                <DriverProfileModal
+                    driver={selectedDriver}
+                    onClose={closeModal}
+                    onEdit={() => {
+                        closeModal();
+                        handleEdit(selectedDriver);
                     }}
                 />
             )}

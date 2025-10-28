@@ -41,6 +41,7 @@ const parsePaidAmount = (status: string | undefined | null): number => {
 const StudentProfileModal: React.FC<StudentProfileModalProps> = ({ student: initialStudent, classes, onClose }) => {
     const [student, setStudent] = useState<Student>(initialStudent);
     const [updatingFee, setUpdatingFee] = useState<string | null>(null);
+    const [updatingOtherFee, setUpdatingOtherFee] = useState<string | null>(null);
     const [attendanceStatus, setAttendanceStatus] = useState<Map<string, 'present' | 'absent'>>(new Map());
     const [loadingAttendance, setLoadingAttendance] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -147,6 +148,29 @@ const StudentProfileModal: React.FC<StudentProfileModalProps> = ({ student: init
             setCustomAmount('');
         }
         setUpdatingFee(null);
+    };
+
+    const handlePayOtherFee = async (feeToPay: OtherFee) => {
+        const key = `${feeToPay.fees_name}-${feeToPay.dues_date}`;
+        setUpdatingOtherFee(key);
+        setError(null);
+
+        const updatedOtherFees = student.other_fees?.map(fee => {
+            if (fee.fees_name === feeToPay.fees_name && fee.dues_date === feeToPay.dues_date && !fee.paid_date) {
+                return { ...fee, paid_date: new Date().toISOString() };
+            }
+            return fee;
+        });
+
+        const { error } = await supabase
+            .from('students')
+            .update({ other_fees: updatedOtherFees })
+            .eq('id', student.id);
+        
+        if (error) {
+            setError(`Failed to update fee: ${error.message}`);
+        }
+        setUpdatingOtherFee(null);
     };
 
     const studentClassInfo = classes.find(c => c.class_name === student.class);
@@ -347,6 +371,44 @@ const StudentProfileModal: React.FC<StudentProfileModalProps> = ({ student: init
                                             {renderFeeStatus(month)}
                                         </div>
                                     ))}
+                                </div>
+                            </div>
+                             <div className="bg-white p-6 rounded-xl shadow-md">
+                                <h4 className="info-header">Other Fees</h4>
+                                <div className="h-40 overflow-y-auto border border-gray-200 rounded-md">
+                                    {(student.other_fees && student.other_fees.length > 0) ? (
+                                        <table className="min-w-full text-sm">
+                                            <thead className="bg-gray-50 sticky top-0">
+                                                <tr>
+                                                    <th className="p-2 text-left font-medium text-gray-500">Fee Name</th>
+                                                    <th className="p-2 text-right font-medium text-gray-500">Amount</th>
+                                                    <th className="p-2 text-center font-medium text-gray-500">Status</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-200">
+                                                {student.other_fees.map((fee, index) => {
+                                                    const key = `${fee.fees_name}-${fee.dues_date}`;
+                                                    return (
+                                                        <tr key={index}>
+                                                            <td className="p-2">{fee.fees_name}</td>
+                                                            <td className="p-2 text-right">₹{fee.amount.toLocaleString()}</td>
+                                                            <td className="p-2 text-center">
+                                                                {fee.paid_date ? (
+                                                                    <span className="fee-badge bg-green-100 text-green-800">Paid</span>
+                                                                ) : (
+                                                                    <button onClick={() => handlePayOtherFee(fee)} disabled={updatingOtherFee === key} className="px-2 py-0.5 text-xs text-white bg-blue-600 rounded hover:bg-blue-700 disabled:bg-gray-400">
+                                                                        {updatingOtherFee === key ? <Spinner size="3" /> : 'Pay'}
+                                                                    </button>
+                                                                )}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    ) : (
+                                        <p className="text-center text-gray-500 p-4">No other fees found.</p>
+                                    )}
                                 </div>
                             </div>
                             <div className="bg-white p-6 rounded-xl shadow-md">
