@@ -1,7 +1,7 @@
 import { supabase } from './supabase';
 
 const BUCKET_NAME = 'school_assets';
-const MAX_FILE_SIZE_KB = 5;
+const MAX_FILE_SIZE_KB = 20;
 
 /**
  * Uploads an image file to Supabase Storage.
@@ -11,7 +11,8 @@ const MAX_FILE_SIZE_KB = 5;
  */
 export const uploadImage = async (file: File, path: string): Promise<string> => {
     if (file.size > MAX_FILE_SIZE_KB * 1024) {
-        throw new Error(`File size exceeds the limit of ${MAX_FILE_SIZE_KB} KB.`);
+        // This check is a safeguard. The client-side should have already compressed the image.
+        throw new Error(`File size exceeds the final limit of ${MAX_FILE_SIZE_KB} KB after compression attempts.`);
     }
 
     const { data, error } = await supabase.storage
