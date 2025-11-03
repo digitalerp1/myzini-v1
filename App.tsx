@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from './services/supabase';
 import { Session } from '@supabase/supabase-js';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
@@ -24,13 +24,25 @@ import GeneratorTools from './pages/GeneratorTools';
 import StaffAttendance from './pages/StaffAttendance';
 import StaffAttendanceReport from './pages/StaffAttendanceReport';
 import Transport from './pages/Transport';
+import EmailConfirmationPage from './pages/EmailConfirmationPage';
 
 const App: React.FC = () => {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
+  // Check for confirmation URL on initial load. This is done synchronously.
+  const isConfirmationFlow = useMemo(() => window.location.hash.includes('type=signup'), []);
+
   useEffect(() => {
+    // If it's a confirmation flow, the EmailConfirmationPage will handle everything.
+    // We just need to prevent the main app from loading.
+    if (isConfirmationFlow) {
+      setLoading(false);
+      return;
+    }
+
+    // Regular app flow
     const getSession = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       setSession(session);
@@ -48,8 +60,11 @@ const App: React.FC = () => {
     return () => {
       subscription?.unsubscribe();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [navigate, isConfirmationFlow]);
+
+  if (isConfirmationFlow) {
+    return <EmailConfirmationPage />;
+  }
 
   if (loading) {
     return (
