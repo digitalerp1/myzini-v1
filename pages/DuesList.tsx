@@ -67,7 +67,7 @@ const DuesList: React.FC = () => {
             const studentsWithDues: StudentWithDues[] = [];
 
             for (const student of students) {
-                let studentTotalDues = 0;
+                let studentTotalDues = student.previous_dues || 0;
                 
                 // Monthly fees
                 const fee = classFeesMap.get(student.class || '') || 0;

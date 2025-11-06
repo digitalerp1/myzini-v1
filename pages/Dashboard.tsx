@@ -11,6 +11,7 @@ import StaffIcon from '../components/icons/StaffIcon';
 import ClassesIcon from '../components/icons/ClassesIcon';
 import RupeeIcon from '../components/icons/RupeeIcon';
 import ExpensesIcon from '../components/icons/ExpensesIcon';
+import DuesIcon from '../components/icons/DuesIcon';
 
 interface DashboardProps {
     user: User;
@@ -25,6 +26,7 @@ interface DashboardData {
     totalPaid: number;
     totalDues: number;
     totalExpenses: number;
+    totalPreviousDues: number;
     genderByClass: { label: string; value1: number; value2: number }[];
     paidByClass: { label: string; value: number }[];
     duesByClass: { label: string; value: number }[];
@@ -69,6 +71,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
         const totalBoys = students.filter(s => s.gender === 'Male').length;
         const totalGirls = students.filter(s => s.gender === 'Female').length;
         const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
+        const totalPreviousDues = students.reduce((sum, s) => sum + (s.previous_dues || 0), 0);
 
         const classFeesMap = new Map(classes.map(c => [c.class_name, c.school_fees || 0]));
         const months: (keyof Student)[] = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
@@ -144,6 +147,15 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                     }
                 }
             }
+            
+            // Previous Dues
+            if (s.previous_dues) {
+                totalDues += s.previous_dues;
+                if (s.class) {
+                    if (!duesByClass[s.class!]) duesByClass[s.class!] = 0;
+                    duesByClass[s.class!] += s.previous_dues;
+                }
+            }
         }
 
         // Attendance by Month
@@ -168,7 +180,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
         const formatForChart = (obj: { [key: string]: number }) => Object.entries(obj).map(([label, value]) => ({ label, value })).sort((a,b) => b.value - a.value);
 
         setData({
-            totalStudents, totalStaff, totalClasses, totalBoys, totalGirls, totalPaid, totalDues, totalExpenses,
+            totalStudents, totalStaff, totalClasses, totalBoys, totalGirls, totalPaid, totalDues, totalExpenses, totalPreviousDues,
             genderByClass: Object.entries(genderByClass).map(([label, { boys, girls }]) => ({ label, value1: boys, value2: girls })),
             paidByClass: formatForChart(paidByClass),
             duesByClass: formatForChart(duesByClass),
@@ -236,15 +248,18 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
             <h1 className="text-3xl font-bold text-gray-800">Dashboard</h1>
 
             {/* KPI Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 gap-5">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-5">
                  <StatCard title="Total Students" value={data.totalStudents} icon={<StudentsIcon className="w-7 h-7 text-white"/>} color="bg-blue-500" />
                  <StatCard title="Total Staff" value={data.totalStaff} icon={<StaffIcon className="w-7 h-7 text-white"/>} color="bg-purple-500" />
                  <StatCard title="Total Classes" value={data.totalClasses} icon={<ClassesIcon className="w-7 h-7 text-white"/>} color="bg-indigo-500" />
-                 <StatCard title="Total Expenses" value={formatCurrency(data.totalExpenses)} icon={<ExpensesIcon className="w-7 h-7 text-white"/>} color="bg-orange-500" />
+
                  <StatCard title="Total Boys" value={data.totalBoys} icon={<StudentsIcon className="w-7 h-7 text-white"/>} color="bg-sky-500" />
                  <StatCard title="Total Girls" value={data.totalGirls} icon={<StudentsIcon className="w-7 h-7 text-white"/>} color="bg-pink-500" />
+                 <StatCard title="Total Expenses" value={formatCurrency(data.totalExpenses)} icon={<ExpensesIcon className="w-7 h-7 text-white"/>} color="bg-orange-500" />
+
                  <StatCard title="Total Paid" value={formatCurrency(data.totalPaid)} icon={<RupeeIcon className="w-7 h-7 text-white"/>} color="bg-green-500" />
-                 <StatCard title="Total Dues" value={formatCurrency(data.totalDues)} icon={<RupeeIcon className="w-7 h-7 text-white"/>} color="bg-red-500" />
+                 <StatCard title="Total Dues" value={formatCurrency(data.totalDues)} icon={<DuesIcon className="w-7 h-7 text-white"/>} color="bg-red-500" />
+                 <StatCard title="Previous Dues" value={formatCurrency(data.totalPreviousDues)} icon={<DuesIcon className="w-7 h-7 text-white"/>} color="bg-yellow-500" />
             </div>
 
             {/* Charts */}

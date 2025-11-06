@@ -34,7 +34,8 @@ const StudentModal: React.FC<StudentModalProps> = ({ student, classes, onClose, 
         blood_group: student?.blood_group || '',
         caste: student?.caste || '',
         photo_url: student?.photo_url || '',
-        previous_school_name: student?.previous_school_name || ''
+        previous_school_name: student?.previous_school_name || '',
+        previous_dues: student?.previous_dues || 0,
     });
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -134,7 +135,10 @@ const StudentModal: React.FC<StudentModalProps> = ({ student, classes, onClose, 
             return;
         }
         
-        const dataToSave = { ...formData };
+        const dataToSave = { 
+            ...formData,
+            previous_dues: Number(formData.previous_dues) || 0,
+        };
 
         if (student) { // Editing existing student
             if (!dataToSave.password || dataToSave.password === '') {
@@ -250,6 +254,10 @@ const StudentModal: React.FC<StudentModalProps> = ({ student, classes, onClose, 
                     <div>
                         <label className="block text-sm font-medium text-gray-700">Previous School</label>
                         <input type="text" name="previous_school_name" value={formData.previous_school_name} onChange={handleChange} className="mt-1 input-field"/>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700">Previous Dues (₹)</label>
+                        <input type="number" name="previous_dues" value={formData.previous_dues ?? ''} onChange={handleChange} placeholder="e.g. 1500" className="mt-1 input-field"/>
                     </div>
 
                     <ImageUpload

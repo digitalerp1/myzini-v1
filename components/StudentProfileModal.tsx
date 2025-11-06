@@ -198,7 +198,7 @@ const StudentProfileModal: React.FC<StudentProfileModalProps> = ({ student: init
     }, { paid: 0, dues: 0 });
 
     const finalTotalPaid = totalPaid + otherFeesSummary.paid;
-    const finalTotalDues = totalDues + otherFeesSummary.dues;
+    const finalTotalDues = totalDues + otherFeesSummary.dues + (student.previous_dues || 0);
 
     const attendanceSummary = Array.from(attendanceStatus.values()).reduce((acc, status) => {
         if (status === 'present') acc.present++;
@@ -359,8 +359,9 @@ const StudentProfileModal: React.FC<StudentProfileModalProps> = ({ student: init
                         <div className="lg:col-span-2 space-y-6">
                             <div className="bg-white p-6 rounded-xl shadow-md">
                                 <h4 className="text-xl font-bold text-gray-800 mb-4">Fee Records</h4>
-                                <div className="grid grid-cols-3 gap-4 mb-4">
+                                <div className="grid grid-cols-2 gap-4 mb-4">
                                     <FeeStatCard label="Monthly Fee" value={`₹${feeAmount.toLocaleString()}`} color="blue" />
+                                    <FeeStatCard label="Previous Dues" value={`₹${(student.previous_dues || 0).toLocaleString()}`} color="orange" />
                                     <FeeStatCard label="Total Paid" value={`₹${finalTotalPaid.toLocaleString()}`} color="green" />
                                     <FeeStatCard label="Total Dues" value={`₹${finalTotalDues.toLocaleString()}`} color="red" />
                                 </div>
@@ -455,11 +456,12 @@ const InfoItem = ({ label, value, fullWidth = false }: { label: string, value?: 
     </div>
 );
 
-const FeeStatCard = ({ label, value, color }: { label: string, value: string, color: 'blue'|'green'|'red' }) => {
+const FeeStatCard = ({ label, value, color }: { label: string, value: string, color: 'blue'|'green'|'red'|'orange' }) => {
     const colors = {
         blue: 'bg-blue-50 text-blue-800',
         green: 'bg-green-50 text-green-800',
-        red: 'bg-red-50 text-red-800'
+        red: 'bg-red-50 text-red-800',
+        orange: 'bg-orange-50 text-orange-800',
     };
     return (
         <div className={`p-3 rounded-lg text-center ${colors[color]}`}>
