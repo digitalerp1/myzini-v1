@@ -35,6 +35,19 @@ import { MarksheetTemplateMinimalist } from '../components/generators/templates/
 import { MarksheetTemplateCreative } from '../components/generators/templates/MarksheetTemplateCreative';
 import { MarksheetTemplateGrid } from '../components/generators/templates/MarksheetTemplateGrid';
 import { MarksheetTemplateOfficial } from '../components/generators/templates/MarksheetTemplateOfficial';
+// New Classical Marksheet Templates
+import { MarksheetTemplateClassical1 } from '../components/generators/templates/MarksheetTemplateClassical1';
+import { MarksheetTemplateClassical2 } from '../components/generators/templates/MarksheetTemplateClassical2';
+import { MarksheetTemplateClassical3 } from '../components/generators/templates/MarksheetTemplateClassical3';
+import { MarksheetTemplateClassical4 } from '../components/generators/templates/MarksheetTemplateClassical4';
+import { MarksheetTemplateClassical5 } from '../components/generators/templates/MarksheetTemplateClassical5';
+import { MarksheetTemplateClassical6 } from '../components/generators/templates/MarksheetTemplateClassical6';
+import { MarksheetTemplateClassical7 } from '../components/generators/templates/MarksheetTemplateClassical7';
+import { MarksheetTemplateClassical8 } from '../components/generators/templates/MarksheetTemplateClassical8';
+import { MarksheetTemplateClassical9 } from '../components/generators/templates/MarksheetTemplateClassical9';
+import { MarksheetTemplateClassical10 } from '../components/generators/templates/MarksheetTemplateClassical10';
+import { MarksheetTemplateClassical11 } from '../components/generators/templates/MarksheetTemplateClassical11';
+import { MarksheetTemplateClassical12 } from '../components/generators/templates/MarksheetTemplateClassical12';
 
 // Import Certificate templates
 import { CertificateTemplateFormal } from '../components/generators/templates/CertificateTemplateFormal';
@@ -45,6 +58,28 @@ import { CertificateTemplateAchievement } from '../components/generators/templat
 import { CertificateTemplateProfessional1 } from '../components/generators/templates/CertificateTemplateProfessional1';
 import { CertificateTemplateProfessional2 } from '../components/generators/templates/CertificateTemplateProfessional2';
 import { CertificateTemplateProfessional3 } from '../components/generators/templates/CertificateTemplateProfessional3';
+// New Certificate templates (Previous Batch)
+import { CertificateTemplateRoyal } from '../components/generators/templates/CertificateTemplateRoyal';
+import { CertificateTemplateGeometric } from '../components/generators/templates/CertificateTemplateGeometric';
+import { CertificateTemplateMinimal } from '../components/generators/templates/CertificateTemplateMinimal';
+import { CertificateTemplateVintage } from '../components/generators/templates/CertificateTemplateVintage';
+import { CertificateTemplateAbstract } from '../components/generators/templates/CertificateTemplateAbstract';
+import { CertificateTemplateKids } from '../components/generators/templates/CertificateTemplateKids';
+import { CertificateTemplateCorporate } from '../components/generators/templates/CertificateTemplateCorporate';
+import { CertificateTemplateElegant } from '../components/generators/templates/CertificateTemplateElegant';
+import { CertificateTemplateModernRed } from '../components/generators/templates/CertificateTemplateModernRed';
+import { CertificateTemplateTech } from '../components/generators/templates/CertificateTemplateTech';
+import { CertificateTemplateStar } from '../components/generators/templates/CertificateTemplateStar';
+import { CertificateTemplateWave } from '../components/generators/templates/CertificateTemplateWave';
+// New Certificate Templates (Latest Batch)
+import { CertificateTemplateOrnateGold } from '../components/generators/templates/CertificateTemplateOrnateGold';
+import { CertificateTemplateGeometricPurple } from '../components/generators/templates/CertificateTemplateGeometricPurple';
+import { CertificateTemplateBlueGold } from '../components/generators/templates/CertificateTemplateBlueGold';
+import { CertificateTemplateBlueCurves } from '../components/generators/templates/CertificateTemplateBlueCurves';
+import { CertificateTemplateYellowStars } from '../components/generators/templates/CertificateTemplateYellowStars';
+import { CertificateTemplateSimpleBorder } from '../components/generators/templates/CertificateTemplateSimpleBorder';
+import { CertificateTemplatePinkPurple } from '../components/generators/templates/CertificateTemplatePinkPurple';
+
 
 // Import Progress Card templates
 import { ProgressCardTemplateClassic } from '../components/generators/templates/ProgressCardTemplateClassic';
@@ -89,6 +124,18 @@ const MARKSHEET_TEMPLATES: { [key: string]: any } = {
     creative: { component: MarksheetTemplateCreative },
     grid: { component: MarksheetTemplateGrid },
     official: { component: MarksheetTemplateOfficial },
+    classical1: { component: MarksheetTemplateClassical1 },
+    classical2: { component: MarksheetTemplateClassical2 },
+    classical3: { component: MarksheetTemplateClassical3 },
+    classical4: { component: MarksheetTemplateClassical4 },
+    classical5: { component: MarksheetTemplateClassical5 },
+    classical6: { component: MarksheetTemplateClassical6 },
+    classical7: { component: MarksheetTemplateClassical7 },
+    classical8: { component: MarksheetTemplateClassical8 },
+    classical9: { component: MarksheetTemplateClassical9 },
+    classical10: { component: MarksheetTemplateClassical10 },
+    classical11: { component: MarksheetTemplateClassical11 },
+    classical12: { component: MarksheetTemplateClassical12 },
 };
 
 const CERTIFICATE_TEMPLATES: { [key: string]: any } = {
@@ -100,6 +147,25 @@ const CERTIFICATE_TEMPLATES: { [key: string]: any } = {
     professional1: { component: CertificateTemplateProfessional1 },
     professional2: { component: CertificateTemplateProfessional2 },
     professional3: { component: CertificateTemplateProfessional3 },
+    royal: { component: CertificateTemplateRoyal },
+    geometric: { component: CertificateTemplateGeometric },
+    minimal: { component: CertificateTemplateMinimal },
+    vintage: { component: CertificateTemplateVintage },
+    abstract: { component: CertificateTemplateAbstract },
+    kids: { component: CertificateTemplateKids },
+    corporate: { component: CertificateTemplateCorporate },
+    elegant: { component: CertificateTemplateElegant },
+    modernred: { component: CertificateTemplateModernRed },
+    tech: { component: CertificateTemplateTech },
+    star: { component: CertificateTemplateStar },
+    wave: { component: CertificateTemplateWave },
+    ornategold: { component: CertificateTemplateOrnateGold },
+    geometricpurple: { component: CertificateTemplateGeometricPurple },
+    bluegold: { component: CertificateTemplateBlueGold },
+    bluecurves: { component: CertificateTemplateBlueCurves },
+    yellowstars: { component: CertificateTemplateYellowStars },
+    simpleborder: { component: CertificateTemplateSimpleBorder },
+    pinkpurple: { component: CertificateTemplatePinkPurple },
 };
 
 const PROGRESS_CARD_TEMPLATES: { [key: string]: any } = {

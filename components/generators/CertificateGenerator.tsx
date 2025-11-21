@@ -15,6 +15,28 @@ import { CertificateTemplateAchievement } from './templates/CertificateTemplateA
 import { CertificateTemplateProfessional1 } from './templates/CertificateTemplateProfessional1';
 import { CertificateTemplateProfessional2 } from './templates/CertificateTemplateProfessional2';
 import { CertificateTemplateProfessional3 } from './templates/CertificateTemplateProfessional3';
+// Previous Templates
+import { CertificateTemplateRoyal } from './templates/CertificateTemplateRoyal';
+import { CertificateTemplateGeometric } from './templates/CertificateTemplateGeometric';
+import { CertificateTemplateMinimal } from './templates/CertificateTemplateMinimal';
+import { CertificateTemplateVintage } from './templates/CertificateTemplateVintage';
+import { CertificateTemplateAbstract } from './templates/CertificateTemplateAbstract';
+import { CertificateTemplateKids } from './templates/CertificateTemplateKids';
+import { CertificateTemplateCorporate } from './templates/CertificateTemplateCorporate';
+import { CertificateTemplateElegant } from './templates/CertificateTemplateElegant';
+import { CertificateTemplateModernRed } from './templates/CertificateTemplateModernRed';
+import { CertificateTemplateTech } from './templates/CertificateTemplateTech';
+import { CertificateTemplateStar } from './templates/CertificateTemplateStar';
+import { CertificateTemplateWave } from './templates/CertificateTemplateWave';
+// New Templates
+import { CertificateTemplateOrnateGold } from './templates/CertificateTemplateOrnateGold';
+import { CertificateTemplateGeometricPurple } from './templates/CertificateTemplateGeometricPurple';
+import { CertificateTemplateBlueGold } from './templates/CertificateTemplateBlueGold';
+import { CertificateTemplateBlueCurves } from './templates/CertificateTemplateBlueCurves';
+import { CertificateTemplateYellowStars } from './templates/CertificateTemplateYellowStars';
+import { CertificateTemplateSimpleBorder } from './templates/CertificateTemplateSimpleBorder';
+import { CertificateTemplatePinkPurple } from './templates/CertificateTemplatePinkPurple';
+
 
 interface ExamInfo { key: string; name: string; className: string; }
 interface Criteria { division: string; minPercentage: number | ''; }
@@ -28,6 +50,27 @@ const certificateTemplates = [
     { id: 'professional1', label: 'Imperial Gold', component: CertificateTemplateProfessional1 },
     { id: 'professional2', label: 'Corporate Blue', component: CertificateTemplateProfessional2 },
     { id: 'professional3', label: 'Classic Crest', component: CertificateTemplateProfessional3 },
+    // Previous
+    { id: 'royal', label: 'Royal Gold', component: CertificateTemplateRoyal },
+    { id: 'geometric', label: 'Geometric', component: CertificateTemplateGeometric },
+    { id: 'minimal', label: 'Minimalist', component: CertificateTemplateMinimal },
+    { id: 'vintage', label: 'Vintage Parchment', component: CertificateTemplateVintage },
+    { id: 'abstract', label: 'Abstract Purple', component: CertificateTemplateAbstract },
+    { id: 'kids', label: 'Kids Star', component: CertificateTemplateKids },
+    { id: 'corporate', label: 'Corporate Slate', component: CertificateTemplateCorporate },
+    { id: 'elegant', label: 'Elegant Dark', component: CertificateTemplateElegant },
+    { id: 'modernred', label: 'Modern Red', component: CertificateTemplateModernRed },
+    { id: 'tech', label: 'Tech Cyber', component: CertificateTemplateTech },
+    { id: 'star', label: 'Star Performer', component: CertificateTemplateStar },
+    { id: 'wave', label: 'Blue Wave', component: CertificateTemplateWave },
+    // New
+    { id: 'ornategold', label: 'Ornate Gold', component: CertificateTemplateOrnateGold },
+    { id: 'geometricpurple', label: 'Geometric Purple', component: CertificateTemplateGeometricPurple },
+    { id: 'bluegold', label: 'Blue & Gold', component: CertificateTemplateBlueGold },
+    { id: 'bluecurves', label: 'Blue Curves', component: CertificateTemplateBlueCurves },
+    { id: 'yellowstars', label: 'Yellow Stars', component: CertificateTemplateYellowStars },
+    { id: 'simpleborder', label: 'Simple Border', component: CertificateTemplateSimpleBorder },
+    { id: 'pinkpurple', label: 'Pink Purple', component: CertificateTemplatePinkPurple },
 ];
 
 const previewStudent: Student = {
@@ -162,7 +205,7 @@ const CertificateGenerator: React.FC = () => {
      const TemplatePreview: React.FC<{ template: typeof certificateTemplates[0]; isSelected: boolean; onSelect: () => void; }> = ({ template, isSelected, onSelect }) => (
         <div onClick={onSelect} className={`cursor-pointer rounded-lg p-3 border-2 transition-all ${isSelected ? 'border-primary shadow-2xl bg-indigo-50' : 'border-gray-200 hover:border-gray-300'}`}>
             <div className="w-full h-48 bg-gray-100 rounded-md flex items-center justify-center overflow-hidden pointer-events-none">
-                <div style={{ transform: 'scale(0.4)', transformOrigin: 'center center' }}>
+                <div style={{ transform: 'scale(0.25)', transformOrigin: 'center center' }}>
                     <template.component student={previewStudent} school={previewSchool} division="First Division" percentage={88.5} examName="Annual Exam" sessionYear="2023-2024" />
                 </div>
             </div>

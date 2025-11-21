@@ -13,6 +13,18 @@ import { MarksheetTemplateMinimalist } from './templates/MarksheetTemplateMinima
 import { MarksheetTemplateCreative } from './templates/MarksheetTemplateCreative';
 import { MarksheetTemplateGrid } from './templates/MarksheetTemplateGrid';
 import { MarksheetTemplateOfficial } from './templates/MarksheetTemplateOfficial';
+import { MarksheetTemplateClassical1 } from './templates/MarksheetTemplateClassical1';
+import { MarksheetTemplateClassical2 } from './templates/MarksheetTemplateClassical2';
+import { MarksheetTemplateClassical3 } from './templates/MarksheetTemplateClassical3';
+import { MarksheetTemplateClassical4 } from './templates/MarksheetTemplateClassical4';
+import { MarksheetTemplateClassical5 } from './templates/MarksheetTemplateClassical5';
+import { MarksheetTemplateClassical6 } from './templates/MarksheetTemplateClassical6';
+import { MarksheetTemplateClassical7 } from './templates/MarksheetTemplateClassical7';
+import { MarksheetTemplateClassical8 } from './templates/MarksheetTemplateClassical8';
+import { MarksheetTemplateClassical9 } from './templates/MarksheetTemplateClassical9';
+import { MarksheetTemplateClassical10 } from './templates/MarksheetTemplateClassical10';
+import { MarksheetTemplateClassical11 } from './templates/MarksheetTemplateClassical11';
+import { MarksheetTemplateClassical12 } from './templates/MarksheetTemplateClassical12';
 
 interface ExamInfo {
     key: string;
@@ -28,6 +40,18 @@ const marksheetTemplates = [
     { id: 'creative', label: 'Creative', component: MarksheetTemplateCreative },
     { id: 'grid', label: 'Detailed Grid', component: MarksheetTemplateGrid },
     { id: 'official', label: 'Government Style', component: MarksheetTemplateOfficial },
+    { id: 'classical1', label: 'Classical Border', component: MarksheetTemplateClassical1 },
+    { id: 'classical2', label: 'Classical Double', component: MarksheetTemplateClassical2 },
+    { id: 'classical3', label: 'Classical Vintage', component: MarksheetTemplateClassical3 },
+    { id: 'classical4', label: 'Classical Palatino', component: MarksheetTemplateClassical4 },
+    { id: 'classical5', label: 'Classical Clean', component: MarksheetTemplateClassical5 },
+    { id: 'classical6', label: 'Classical Transcript', component: MarksheetTemplateClassical6 },
+    { id: 'classical7', label: 'Classical Garamond', component: MarksheetTemplateClassical7 },
+    { id: 'classical8', label: 'Classical Boxed', component: MarksheetTemplateClassical8 },
+    { id: 'classical9', label: 'Classical Simple', component: MarksheetTemplateClassical9 },
+    { id: 'classical10', label: 'Classical Bold', component: MarksheetTemplateClassical10 },
+    { id: 'classical11', label: 'Classical Ridge', component: MarksheetTemplateClassical11 },
+    { id: 'classical12', label: 'Classical Minimal', component: MarksheetTemplateClassical12 },
 ];
 
 // Dummy data for rendering realistic previews
