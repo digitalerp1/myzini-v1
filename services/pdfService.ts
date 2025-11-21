@@ -35,7 +35,6 @@ import { MarksheetTemplateMinimalist } from '../components/generators/templates/
 import { MarksheetTemplateCreative } from '../components/generators/templates/MarksheetTemplateCreative';
 import { MarksheetTemplateGrid } from '../components/generators/templates/MarksheetTemplateGrid';
 import { MarksheetTemplateOfficial } from '../components/generators/templates/MarksheetTemplateOfficial';
-// New Classical Marksheet Templates
 import { MarksheetTemplateClassical1 } from '../components/generators/templates/MarksheetTemplateClassical1';
 import { MarksheetTemplateClassical2 } from '../components/generators/templates/MarksheetTemplateClassical2';
 import { MarksheetTemplateClassical3 } from '../components/generators/templates/MarksheetTemplateClassical3';
@@ -58,7 +57,6 @@ import { CertificateTemplateAchievement } from '../components/generators/templat
 import { CertificateTemplateProfessional1 } from '../components/generators/templates/CertificateTemplateProfessional1';
 import { CertificateTemplateProfessional2 } from '../components/generators/templates/CertificateTemplateProfessional2';
 import { CertificateTemplateProfessional3 } from '../components/generators/templates/CertificateTemplateProfessional3';
-// New Certificate templates (Previous Batch)
 import { CertificateTemplateRoyal } from '../components/generators/templates/CertificateTemplateRoyal';
 import { CertificateTemplateGeometric } from '../components/generators/templates/CertificateTemplateGeometric';
 import { CertificateTemplateMinimal } from '../components/generators/templates/CertificateTemplateMinimal';
@@ -71,7 +69,6 @@ import { CertificateTemplateModernRed } from '../components/generators/templates
 import { CertificateTemplateTech } from '../components/generators/templates/CertificateTemplateTech';
 import { CertificateTemplateStar } from '../components/generators/templates/CertificateTemplateStar';
 import { CertificateTemplateWave } from '../components/generators/templates/CertificateTemplateWave';
-// New Certificate Templates (Latest Batch)
 import { CertificateTemplateOrnateGold } from '../components/generators/templates/CertificateTemplateOrnateGold';
 import { CertificateTemplateGeometricPurple } from '../components/generators/templates/CertificateTemplateGeometricPurple';
 import { CertificateTemplateBlueGold } from '../components/generators/templates/CertificateTemplateBlueGold';
@@ -80,7 +77,6 @@ import { CertificateTemplateYellowStars } from '../components/generators/templat
 import { CertificateTemplateSimpleBorder } from '../components/generators/templates/CertificateTemplateSimpleBorder';
 import { CertificateTemplatePinkPurple } from '../components/generators/templates/CertificateTemplatePinkPurple';
 
-
 // Import Progress Card templates
 import { ProgressCardTemplateClassic } from '../components/generators/templates/ProgressCardTemplateClassic';
 import { ProgressCardTemplateModern } from '../components/generators/templates/ProgressCardTemplateModern';
@@ -88,6 +84,30 @@ import { ProgressCardTemplateCreative } from '../components/generators/templates
 import { ProgressCardTemplateOfficial } from '../components/generators/templates/ProgressCardTemplateOfficial';
 import { ProgressCardTemplateVibrant } from '../components/generators/templates/ProgressCardTemplateVibrant';
 import { ProgressCardTemplateDetailed } from '../components/generators/templates/ProgressCardTemplateDetailed';
+
+// Import Progress Templates Batches
+import { 
+    ProgressTemplate1, ProgressTemplate2, ProgressTemplate3, ProgressTemplate4, ProgressTemplate5 
+} from '../components/generators/templates/ProgressTemplatesBatch1';
+import { 
+    ProgressTemplate6, ProgressTemplate7, ProgressTemplate8, ProgressTemplate9, ProgressTemplate10 
+} from '../components/generators/templates/ProgressTemplatesBatch2';
+import { 
+    ProgressTemplate11, ProgressTemplate12, ProgressTemplate13, ProgressTemplate14, ProgressTemplate15 
+} from '../components/generators/templates/ProgressTemplatesBatch3';
+import { 
+    ProgressTemplate16, ProgressTemplate17, ProgressTemplate18, ProgressTemplate19, ProgressTemplate20 
+} from '../components/generators/templates/ProgressTemplatesBatch4';
+import { 
+    ProgressTemplate21, ProgressTemplate22, ProgressTemplate23, ProgressTemplate24, ProgressTemplate25, ProgressTemplate26, ProgressTemplate27, ProgressTemplate28
+} from '../components/generators/templates/ProgressTemplatesBatch5';
+import { 
+    ProgressTemplate29, ProgressTemplate30, ProgressTemplate31, ProgressTemplate32, ProgressTemplate33, ProgressTemplate34, ProgressTemplate35, ProgressTemplate36
+} from '../components/generators/templates/ProgressTemplatesBatch6';
+import { 
+    ProgressTemplate37, ProgressTemplate38, ProgressTemplate39, ProgressTemplate40, ProgressTemplate41, ProgressTemplate42, ProgressTemplate43, ProgressTemplate44
+} from '../components/generators/templates/ProgressTemplatesBatch7';
+
 
 const A4_WIDTH_MM = 210;
 const A4_HEIGHT_MM = 297;
@@ -169,12 +189,64 @@ const CERTIFICATE_TEMPLATES: { [key: string]: any } = {
 };
 
 const PROGRESS_CARD_TEMPLATES: { [key: string]: any } = {
+    // Legacy
     classic: { component: ProgressCardTemplateClassic },
     modern: { component: ProgressCardTemplateModern },
     creative: { component: ProgressCardTemplateCreative },
     official: { component: ProgressCardTemplateOfficial },
     vibrant: { component: ProgressCardTemplateVibrant },
     detailed: { component: ProgressCardTemplateDetailed },
+    // Batch 1
+    pt1: { component: ProgressTemplate1 },
+    pt2: { component: ProgressTemplate2 },
+    pt3: { component: ProgressTemplate3 },
+    pt4: { component: ProgressTemplate4 },
+    pt5: { component: ProgressTemplate5 },
+    // Batch 2
+    pt6: { component: ProgressTemplate6 },
+    pt7: { component: ProgressTemplate7 },
+    pt8: { component: ProgressTemplate8 },
+    pt9: { component: ProgressTemplate9 },
+    pt10: { component: ProgressTemplate10 },
+    // Batch 3
+    pt11: { component: ProgressTemplate11 },
+    pt12: { component: ProgressTemplate12 },
+    pt13: { component: ProgressTemplate13 },
+    pt14: { component: ProgressTemplate14 },
+    pt15: { component: ProgressTemplate15 },
+    // Batch 4
+    pt16: { component: ProgressTemplate16 },
+    pt17: { component: ProgressTemplate17 },
+    pt18: { component: ProgressTemplate18 },
+    pt19: { component: ProgressTemplate19 },
+    pt20: { component: ProgressTemplate20 },
+    // Batch 5
+    pt21: { component: ProgressTemplate21 },
+    pt22: { component: ProgressTemplate22 },
+    pt23: { component: ProgressTemplate23 },
+    pt24: { component: ProgressTemplate24 },
+    pt25: { component: ProgressTemplate25 },
+    pt26: { component: ProgressTemplate26 },
+    pt27: { component: ProgressTemplate27 },
+    pt28: { component: ProgressTemplate28 },
+    // Batch 6
+    pt29: { component: ProgressTemplate29 },
+    pt30: { component: ProgressTemplate30 },
+    pt31: { component: ProgressTemplate31 },
+    pt32: { component: ProgressTemplate32 },
+    pt33: { component: ProgressTemplate33 },
+    pt34: { component: ProgressTemplate34 },
+    pt35: { component: ProgressTemplate35 },
+    pt36: { component: ProgressTemplate36 },
+    // Batch 7
+    pt37: { component: ProgressTemplate37 },
+    pt38: { component: ProgressTemplate38 },
+    pt39: { component: ProgressTemplate39 },
+    pt40: { component: ProgressTemplate40 },
+    pt41: { component: ProgressTemplate41 },
+    pt42: { component: ProgressTemplate42 },
+    pt43: { component: ProgressTemplate43 },
+    pt44: { component: ProgressTemplate44 },
 };
 
 const renderComponentToCanvas = async (container: HTMLElement, component: React.ReactElement): Promise<HTMLCanvasElement> => {
@@ -438,11 +510,26 @@ export const generateCertificatesPdf = async (
     pdf.save(`certificates_${sanitizeForPath(className)}_${sanitizeForPath(sessionYear)}.pdf`);
 };
 
+// Updated Interface for detailed Progress Card Data
 export interface ProgressCardData {
     student: Student;
     school: OwnerProfile;
     attendanceReport: { month: string, present: number, absent: number, holiday: number }[];
+    // Summary report (original)
     examReport: { examName: string, percentage: number }[];
+    // New Detailed Report
+    detailedExams?: {
+        examName: string;
+        subjects: {
+            name: string;
+            obtained: number;
+            total: number;
+            grade?: string;
+        }[];
+        totalObtained: number;
+        maxTotal: number;
+        percentage: number;
+    }[];
 }
 
 export const generateProgressCardsPdf = async (
