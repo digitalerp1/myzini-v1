@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../services/supabase';
 import { Class, ExamResult, Student, OwnerProfile } from '../../types';
@@ -11,6 +12,9 @@ import { CertificateTemplateModern } from './templates/CertificateTemplateModern
 import { CertificateTemplateClassic } from './templates/CertificateTemplateClassic';
 import { CertificateTemplateArtistic } from './templates/CertificateTemplateArtistic';
 import { CertificateTemplateAchievement } from './templates/CertificateTemplateAchievement';
+import { CertificateTemplateProfessional1 } from './templates/CertificateTemplateProfessional1';
+import { CertificateTemplateProfessional2 } from './templates/CertificateTemplateProfessional2';
+import { CertificateTemplateProfessional3 } from './templates/CertificateTemplateProfessional3';
 
 interface ExamInfo { key: string; name: string; className: string; }
 interface Criteria { division: string; minPercentage: number | ''; }
@@ -21,6 +25,9 @@ const certificateTemplates = [
     { id: 'classic', label: 'Classic', component: CertificateTemplateClassic },
     { id: 'artistic', label: 'Artistic', component: CertificateTemplateArtistic },
     { id: 'achievement', label: 'Achievement', component: CertificateTemplateAchievement },
+    { id: 'professional1', label: 'Imperial Gold', component: CertificateTemplateProfessional1 },
+    { id: 'professional2', label: 'Corporate Blue', component: CertificateTemplateProfessional2 },
+    { id: 'professional3', label: 'Classic Crest', component: CertificateTemplateProfessional3 },
 ];
 
 const previewStudent: Student = {

@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Student, OwnerProfile } from '../../../types';
 
@@ -11,6 +12,15 @@ interface DuesBillTemplateProps {
 const monthDisplayNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const monthKeys = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
 
+const parsePaidAmount = (status: string | undefined | null): number => {
+    if (!status || status === 'undefined' || status === 'Dues') return 0;
+    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(status)) return Infinity;
+    return status.split(';').reduce((total, p) => {
+        const parts = p.split('=d=');
+        return total + (parts.length === 2 ? parseFloat(parts[0]) || 0 : 0);
+    }, 0);
+};
+
 export const DuesBillTemplateCompact: React.FC<DuesBillTemplateProps> = ({ student, school, classFee, selectedMonthIndex }) => {
     
     let totalDues = 0;
@@ -21,21 +31,39 @@ export const DuesBillTemplateCompact: React.FC<DuesBillTemplateProps> = ({ stude
         const monthKey = monthKeys[i] as keyof Student;
         const status = student[monthKey];
         
-        if (status === 'Dues') {
-            totalDues += classFee;
-            feeRecords.push(
-                <tr key={monthKey}>
-                    <td style={styles.tableCell}>{monthDisplayNames[i]}</td>
-                    <td style={{...styles.tableCell, textAlign: 'right'}}>₹{classFee.toLocaleString()}</td>
-                </tr>
-            );
+        let paidAmount = parsePaidAmount(String(status));
+        if (paidAmount === Infinity) paidAmount = classFee;
+
+        if (paidAmount < classFee) {
+            const due = classFee - paidAmount;
+            // Treat as due if specifically marked as Dues OR if undefined/null in the past
+            if (status === 'Dues' || !status || status === 'undefined' || due > 0) {
+                totalDues += due;
+                feeRecords.push(
+                    <tr key={monthKey}>
+                        <td style={styles.tableCell}>{monthDisplayNames[i]}</td>
+                        <td style={{...styles.tableCell, textAlign: 'right'}}>₹{due.toLocaleString()}</td>
+                    </tr>
+                );
+            }
         }
+    }
+
+    const previousDues = student.previous_dues || 0;
+    if (previousDues > 0) {
+        totalDues += previousDues;
+        feeRecords.push(
+            <tr key="prev_dues">
+                <td style={styles.tableCell}>Previous Balance</td>
+                <td style={{...styles.tableCell, textAlign: 'right'}}>₹{previousDues.toLocaleString()}</td>
+            </tr>
+        );
     }
 
     return (
         <div style={styles.bill}>
             <div style={styles.header}>
-                <div>
+                <div style={{flex: 1}}>
                     <h1 style={styles.schoolName}>{school.school_name}</h1>
                     <p style={styles.schoolAddress}>{school.address}</p>
                 </div>
@@ -47,9 +75,14 @@ export const DuesBillTemplateCompact: React.FC<DuesBillTemplateProps> = ({ stude
 
             <div style={styles.section}>
                 <h3 style={styles.sectionTitle}>Bill To:</h3>
-                <p style={styles.detailItem}><strong>{student.name}</strong></p>
-                <p style={styles.detailItem}>Class: {student.class} (Roll: {student.roll_number})</p>
-                <p style={styles.detailItem}>Father's Name: {student.father_name}</p>
+                <div style={styles.row}>
+                    <p style={styles.detailItem}><strong>{student.name}</strong></p>
+                    <p style={styles.detailItem}>Father: {student.father_name}</p>
+                </div>
+                <div style={styles.row}>
+                    <p style={styles.detailItem}>Class: {student.class}</p>
+                    <p style={styles.detailItem}>Roll No: {student.roll_number}</p>
+                </div>
             </div>
             
             <div style={{...styles.section, flexGrow: 1}}>
@@ -58,8 +91,8 @@ export const DuesBillTemplateCompact: React.FC<DuesBillTemplateProps> = ({ stude
                     <table style={styles.feesTable}>
                         <thead style={styles.tableHead}>
                             <tr>
-                                <th style={styles.tableHeader}>Month</th>
-                                <th style={{...styles.tableHeader, textAlign: 'right'}}>Amount</th>
+                                <th style={styles.tableHeader}>Description</th>
+                                <th style={{...styles.tableHeader, textAlign: 'right'}}>Due Amount</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -87,15 +120,15 @@ export const DuesBillTemplateCompact: React.FC<DuesBillTemplateProps> = ({ stude
 const styles: { [key: string]: React.CSSProperties } = {
     bill: {
         fontFamily: '"Helvetica Neue", Arial, sans-serif',
-        width: '105mm',
-        height: '148.5mm',
+        width: '100%',
+        height: '100%',
         boxSizing: 'border-box',
-        padding: '6mm',
+        padding: '8mm',
         display: 'flex',
         flexDirection: 'column',
-        fontSize: '9pt',
+        fontSize: '10pt',
         backgroundColor: 'white',
-        border: '0.5px solid #e5e7eb',
+        border: '1px solid #e5e7eb',
     },
     header: {
         display: 'flex',
@@ -105,13 +138,13 @@ const styles: { [key: string]: React.CSSProperties } = {
         marginBottom: '4mm',
         borderBottom: '2px solid #111827',
     },
-    schoolName: { fontSize: '14pt', fontWeight: 600, margin: 0, color: '#111827', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
-    schoolAddress: { fontSize: '8pt', margin: '2px 0 0 0', color: '#4b5563', wordBreak: 'break-word' },
-    billTitleText: { fontSize: '11pt', fontWeight: 600, margin: 0, color: '#111827' },
-    billDate: { fontSize: '8pt', margin: '2px 0 0 0', color: '#4b5563' },
+    schoolName: { fontSize: '16pt', fontWeight: 600, margin: 0, color: '#111827' },
+    schoolAddress: { fontSize: '9pt', margin: '2px 0 0 0', color: '#4b5563' },
+    billTitleText: { fontSize: '14pt', fontWeight: 600, margin: 0, color: '#111827' },
+    billDate: { fontSize: '9pt', margin: '2px 0 0 0', color: '#4b5563' },
     section: { marginBottom: '4mm' },
     sectionTitle: {
-        fontSize: '8pt',
+        fontSize: '9pt',
         fontWeight: 600,
         textTransform: 'uppercase',
         color: '#6b7280',
@@ -119,41 +152,42 @@ const styles: { [key: string]: React.CSSProperties } = {
         paddingBottom: '1mm',
         marginBottom: '2mm',
     },
-    detailItem: { margin: 0, padding: '1px 0', fontSize: '9pt', color: '#374151', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+    row: { display: 'flex', justifyContent: 'space-between', marginBottom: '1mm' },
+    detailItem: { margin: 0, padding: '1px 0', fontSize: '10pt', color: '#374151' },
     feesTable: { width: '100%', borderCollapse: 'collapse' },
     tableHead: {},
     tableHeader: {
-        padding: '1.5mm',
+        padding: '2mm',
         borderBottom: '1px solid #6b7280',
         textAlign: 'left',
-        fontSize: '8pt',
+        fontSize: '9pt',
         fontWeight: 600,
     },
-    tableCell: { padding: '1.5mm', borderBottom: '1px dotted #d1d5db', fontSize: '9pt' },
+    tableCell: { padding: '2mm', borderBottom: '1px dotted #d1d5db', fontSize: '10pt' },
     noDuesText: {
-        fontSize: '9pt',
+        fontSize: '10pt',
         color: '#166534',
         backgroundColor: '#f0fdf4',
-        padding: '2mm',
+        padding: '4mm',
         borderRadius: '4px',
         textAlign: 'center',
     },
     totalSection: {
         display: 'flex',
         justifyContent: 'space-between',
-        fontSize: '12pt',
+        fontSize: '14pt',
         fontWeight: 'bold',
-        padding: '3mm',
+        padding: '4mm',
         marginTop: 'auto',
         backgroundColor: '#e5e7eb',
         color: '#111827',
         borderRadius: '4px',
     },
     footer: {
-        fontSize: '7pt',
+        fontSize: '8pt',
         color: '#6b7280',
         textAlign: 'center',
-        paddingTop: '3mm',
+        paddingTop: '4mm',
         lineHeight: 1.4,
     },
 };

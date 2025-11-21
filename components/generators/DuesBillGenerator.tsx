@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../services/supabase';
 import { Class, Student, OwnerProfile } from '../../types';
@@ -10,15 +11,23 @@ import { DuesBillTemplateCompact } from './templates/DuesBillTemplateCompact';
 import { DuesBillTemplateDetailed } from './templates/DuesBillTemplateDetailed';
 import { DuesBillTemplateSimple } from './templates/DuesBillTemplateSimple';
 import { DuesBillTemplateModern } from './templates/DuesBillTemplateModern';
+import { DuesBillTemplateInvoice } from './templates/DuesBillTemplateInvoice';
+import { DuesBillTemplateStatement } from './templates/DuesBillTemplateStatement';
+import { DuesBillTemplateClassic } from './templates/DuesBillTemplateClassic';
+import { DuesBillTemplateFullRecord } from './templates/DuesBillTemplateFullRecord';
 
 const monthNames = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
 
 const billTemplates = [
+    { id: 'full_record', label: 'Full Year Record', component: DuesBillTemplateFullRecord },
     { id: 'official', label: 'Official Formal', component: DuesBillTemplateOfficial },
     { id: 'compact', label: 'Compact Modern', component: DuesBillTemplateCompact },
     { id: 'detailed', label: 'Detailed Ledger', component: DuesBillTemplateDetailed },
     { id: 'simple', label: 'Simple B&W', component: DuesBillTemplateSimple },
     { id: 'modern', label: 'Modern Clean', component: DuesBillTemplateModern },
+    { id: 'invoice', label: 'Commercial Invoice', component: DuesBillTemplateInvoice },
+    { id: 'statement', label: 'Bank Statement', component: DuesBillTemplateStatement },
+    { id: 'classic', label: 'Classic Receipt', component: DuesBillTemplateClassic },
 ];
 
 // Dummy data for rendering realistic previews
@@ -29,9 +38,10 @@ const previewStudent: Student = {
     mobile: '9876543210',
     registration_date: new Date().toISOString(),
     january: '2024-01-10T10:00:00Z',
-    february: '2024-02-08T10:00:00Z',
+    february: '250=d=2024-02-08T10:00:00Z', // Partial payment example
     march: 'Dues',
-    april: 'Dues'
+    april: 'Dues',
+    previous_dues: 500
 };
 const previewSchool: OwnerProfile = {
     uid: '', school_name: 'Vidya Mandir School', mobile_number: '0123-456-789',
@@ -167,7 +177,7 @@ const DuesBillGenerator: React.FC = () => {
                         )}
                     </div>
                     <div>
-                        <label htmlFor="month-select" className="block text-lg font-bold text-gray-800">3. Select Bill Month</label>
+                        <label htmlFor="month-select" className="block text-lg font-bold text-gray-800">3. Select Bill Month (for calculation limit)</label>
                         <select
                             id="month-select"
                             value={selectedMonth}

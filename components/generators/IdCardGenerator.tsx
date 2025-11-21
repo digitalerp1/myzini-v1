@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../services/supabase';
 import { Class, Student, OwnerProfile } from '../../types';
@@ -10,6 +11,9 @@ import { IdCardTemplateModern } from './templates/IdCardTemplateModern';
 import { IdCardTemplateVibrant } from './templates/IdCardTemplateVibrant';
 import { IdCardTemplateOfficial } from './templates/IdCardTemplateOfficial';
 import { IdCardTemplateMinimalist } from './templates/IdCardTemplateMinimalist';
+import { IdCardTemplateCorporate } from './templates/IdCardTemplateCorporate';
+import { IdCardTemplateCreative } from './templates/IdCardTemplateCreative';
+import { IdCardTemplateElegant } from './templates/IdCardTemplateElegant';
 
 
 const idCardTemplates = [
@@ -18,6 +22,9 @@ const idCardTemplates = [
     { id: 'vibrant', label: 'Vibrant Circle', component: IdCardTemplateVibrant },
     { id: 'official', label: 'Official Crest', component: IdCardTemplateOfficial },
     { id: 'minimalist', label: 'Minimalist Clean', component: IdCardTemplateMinimalist },
+    { id: 'corporate', label: 'Corporate Blue', component: IdCardTemplateCorporate },
+    { id: 'creative', label: 'Creative Artistic', component: IdCardTemplateCreative },
+    { id: 'elegant', label: 'Elegant Gold', component: IdCardTemplateElegant },
 ];
 
 // Dummy data for rendering realistic previews

@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Student, OwnerProfile } from '../../../types';
 
@@ -11,18 +12,41 @@ interface DuesBillTemplateProps {
 const monthDisplayNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const monthKeys = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
 
+const parsePaidAmount = (status: string | undefined | null): number => {
+    if (!status || status === 'undefined' || status === 'Dues') return 0;
+    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(status)) return Infinity;
+    return status.split(';').reduce((total, p) => {
+        const parts = p.split('=d=');
+        return total + (parts.length === 2 ? parseFloat(parts[0]) || 0 : 0);
+    }, 0);
+};
+
 export const DuesBillTemplateSimple: React.FC<DuesBillTemplateProps> = ({ student, school, classFee, selectedMonthIndex }) => {
     
     let totalDues = 0;
-    const dueMonths = [];
+    const dueItems = [];
 
+    // Check monthly dues
     for (let i = 0; i <= selectedMonthIndex; i++) {
         const monthKey = monthKeys[i] as keyof Student;
         const status = student[monthKey];
-        if (status === 'Dues' || status === 'undefined' || !status) {
-            totalDues += classFee;
-            dueMonths.push(monthDisplayNames[i]);
+        let paidAmount = parsePaidAmount(String(status));
+        if (paidAmount === Infinity) paidAmount = classFee;
+
+        if (paidAmount < classFee) {
+            const due = classFee - paidAmount;
+            // Consider due if explicit Dues, or undefined/blank in past, or partial
+            if (status === 'Dues' || !status || status === 'undefined' || due > 0) {
+                totalDues += due;
+                dueItems.push(`${monthDisplayNames[i]} (₹${due})`);
+            }
         }
+    }
+
+    // Check previous dues
+    if (student.previous_dues && student.previous_dues > 0) {
+        totalDues += student.previous_dues;
+        dueItems.push(`Previous Balance (₹${student.previous_dues})`);
     }
 
     return (
@@ -35,23 +59,27 @@ export const DuesBillTemplateSimple: React.FC<DuesBillTemplateProps> = ({ studen
             <h2 style={styles.title}>FEE REMINDER</h2>
 
             <div style={styles.section}>
-                <p style={styles.detailItem}><strong>Date:</strong> {new Date().toLocaleDateString()}</p>
-                <p style={styles.detailItem}><strong>Student Name:</strong> {student.name}</p>
-                <p style={styles.detailItem}><strong>Class:</strong> {student.class}</p>
-                <p style={styles.detailItem}><strong>Roll No:</strong> {student.roll_number}</p>
+                <div style={styles.row}>
+                    <p style={styles.detailItem}><strong>Date:</strong> {new Date().toLocaleDateString()}</p>
+                    <p style={styles.detailItem}><strong>Class:</strong> {student.class}</p>
+                </div>
+                <div style={styles.row}>
+                    <p style={styles.detailItem}><strong>Student:</strong> {student.name}</p>
+                    <p style={styles.detailItem}><strong>Roll No:</strong> {student.roll_number}</p>
+                </div>
             </div>
             
             <div style={styles.section}>
                  <p style={styles.bodyText}>
-                    This is a reminder regarding the outstanding school fees. As per our records, the following fees are due:
+                    This is a reminder regarding outstanding school fees. As per our records, the following dues are pending:
                 </p>
             </div>
 
             <div style={styles.duesList}>
-                {dueMonths.length > 0 ? (
-                    <ul>
-                        {dueMonths.map(month => <li key={month}>{month}</li>)}
-                    </ul>
+                {dueItems.length > 0 ? (
+                    <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '5px'}}>
+                        {dueItems.map((item, i) => <span key={i}>• {item}</span>)}
+                    </div>
                 ) : (
                     <p style={{textAlign: 'center', fontWeight: 'bold'}}>No dues pending.</p>
                 )}
@@ -72,13 +100,13 @@ export const DuesBillTemplateSimple: React.FC<DuesBillTemplateProps> = ({ studen
 const styles: { [key: string]: React.CSSProperties } = {
     bill: {
         fontFamily: 'monospace',
-        width: '105mm',
-        height: '148.5mm',
+        width: '100%',
+        height: '100%',
         boxSizing: 'border-box',
-        padding: '5mm',
+        padding: '6mm',
         display: 'flex',
         flexDirection: 'column',
-        fontSize: '10pt',
+        fontSize: '11pt',
         backgroundColor: 'white',
         color: '#000',
         border: '1px solid #000',
@@ -87,43 +115,44 @@ const styles: { [key: string]: React.CSSProperties } = {
         textAlign: 'center',
         paddingBottom: '3mm',
         borderBottom: '1px solid #000',
-        overflow: 'hidden',
     },
-    schoolName: { fontSize: '14pt', fontWeight: 'bold', margin: 0, textTransform: 'uppercase' },
-    schoolAddress: { fontSize: '8pt', margin: '1mm 0 0 0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+    schoolName: { fontSize: '16pt', fontWeight: 'bold', margin: 0, textTransform: 'uppercase' },
+    schoolAddress: { fontSize: '10pt', margin: '1mm 0 0 0' },
     title: {
         textAlign: 'center',
         margin: '4mm 0',
-        fontSize: '12pt',
+        fontSize: '14pt',
         fontWeight: 'bold',
         textDecoration: 'underline',
     },
     section: {
         marginBottom: '3mm',
     },
-    detailItem: { margin: '0.5mm 0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+    row: { display: 'flex', justifyContent: 'space-between' },
+    detailItem: { margin: '0.5mm 0' },
     bodyText: {
         margin: '0',
-        fontSize: '9pt',
+        fontSize: '10pt',
         lineHeight: 1.4,
     },
     duesList: {
         border: '1px solid #000',
-        padding: '2mm',
-        minHeight: '30mm',
-        fontSize: '10pt'
+        padding: '3mm',
+        flexGrow: 1,
+        fontSize: '11pt',
+        overflow: 'hidden'
     },
     totalSection: {
         border: '1px solid #000',
         borderTop: 'none',
         padding: '3mm',
         textAlign: 'center',
-        fontSize: '11pt',
+        fontSize: '13pt',
     },
     footer: {
         marginTop: 'auto',
         textAlign: 'center',
-        fontSize: '8pt',
+        fontSize: '9pt',
         borderTop: '1px solid #000',
         paddingTop: '2mm',
     },

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../services/supabase';
 import { Student, Class, Attendance, OtherFee } from '../types';
@@ -43,6 +44,7 @@ const StudentProfileModal: React.FC<StudentProfileModalProps> = ({ student: init
     const [updatingFee, setUpdatingFee] = useState<string | null>(null);
     const [updatingOtherFee, setUpdatingOtherFee] = useState<string | null>(null);
     const [attendanceStatus, setAttendanceStatus] = useState<Map<string, 'present' | 'absent'>>(new Map());
+    const [classAttendanceDates, setClassAttendanceDates] = useState<Set<string>>(new Set());
     const [loadingAttendance, setLoadingAttendance] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [paymentAction, setPaymentAction] = useState<{ month: string, remaining: number } | null>(null);
@@ -92,7 +94,12 @@ const StudentProfileModal: React.FC<StudentProfileModalProps> = ({ student: init
             setError(error.message);
         } else {
             const statusMap = new Map<string, 'present' | 'absent'>();
+            const classDates = new Set<string>();
+
             data.forEach(record => {
+                // Track that attendance was taken on this day for this class
+                classDates.add(record.date);
+
                 const presentRolls = record.present ? record.present.split(',') : [];
                 const absentRolls = record.absent ? record.absent.split(',') : [];
 
@@ -103,6 +110,7 @@ const StudentProfileModal: React.FC<StudentProfileModalProps> = ({ student: init
                 }
             });
             setAttendanceStatus(statusMap);
+            setClassAttendanceDates(classDates);
         }
         setLoadingAttendance(false);
     }, [student.class, student.roll_number, classes, currentYear]);
@@ -289,6 +297,9 @@ const StudentProfileModal: React.FC<StudentProfileModalProps> = ({ student: init
         const date = new Date(year, month, 1);
         const firstDayIndex = date.getDay();
         const daysInMonth = new Date(year, month + 1, 0).getDate();
+        
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
 
         for (let i = 0; i < firstDayIndex; i++) {
             days.push(<div key={`empty-${i}`} className="w-8 h-8" />);
@@ -296,18 +307,40 @@ const StudentProfileModal: React.FC<StudentProfileModalProps> = ({ student: init
 
         for (let day = 1; day <= daysInMonth; day++) {
             const fullDate = new Date(year, month, day);
-            const dateString = fullDate.toISOString().split('T')[0];
-            const dayOfWeek = fullDate.getDay();
-
+            // Manually format to YYYY-MM-DD to match database format and avoid timezone shifts
+            const dateString = `${fullDate.getFullYear()}-${String(fullDate.getMonth() + 1).padStart(2, '0')}-${String(fullDate.getDate()).padStart(2, '0')}`;
+            
             let statusClass = 'bg-gray-100 text-gray-700 hover:bg-gray-200';
+            let title = '';
             const status = attendanceStatus.get(dateString);
 
-            if (status === 'present') statusClass = 'bg-green-500 text-white font-bold';
-            else if (status === 'absent') statusClass = 'bg-red-500 text-white font-bold';
-            else if (dayOfWeek === 0) statusClass = 'bg-yellow-400 text-white';
+            // Logic:
+            // 1. Future dates -> Default Gray (No status)
+            // 2. Present -> Green
+            // 3. Absent -> Red
+            // 4. Past date AND No Class Attendance Record -> Yellow (Holiday)
+            // 5. Past date AND Class Attendance Record exists but Student has no status -> Gray (Implicit Absent or Data Missing)
+
+            if (fullDate > today) {
+                statusClass = 'bg-gray-50 text-gray-400'; // Future
+                title = 'Future Date';
+            } else if (status === 'present') {
+                statusClass = 'bg-green-500 text-white font-bold';
+                title = 'Present';
+            } else if (status === 'absent') {
+                statusClass = 'bg-red-500 text-white font-bold';
+                title = 'Absent';
+            } else if (!classAttendanceDates.has(dateString)) {
+                // Date is in the past (or today) AND no attendance was taken for the class
+                statusClass = 'bg-yellow-400 text-white font-bold';
+                title = 'Holiday';
+            } else {
+                // Date is in the past, attendance WAS taken for class, but this student has no record
+                title = 'No Data';
+            }
 
             days.push(
-                <div key={day} className={`w-8 h-8 flex items-center justify-center rounded-full text-xs transition-colors duration-200 ${statusClass}`}>
+                <div key={day} className={`w-8 h-8 flex items-center justify-center rounded-full text-xs transition-colors duration-200 ${statusClass}`} title={title}>
                     {day}
                 </div>
             );

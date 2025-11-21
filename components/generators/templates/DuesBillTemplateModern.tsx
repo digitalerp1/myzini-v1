@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Student, OwnerProfile } from '../../../types';
 
@@ -11,6 +12,15 @@ interface DuesBillTemplateProps {
 const monthDisplayNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const monthKeys = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
 
+const parsePaidAmount = (status: string | undefined | null): number => {
+    if (!status || status === 'undefined' || status === 'Dues') return 0;
+    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(status)) return Infinity;
+    return status.split(';').reduce((total, p) => {
+        const parts = p.split('=d=');
+        return total + (parts.length === 2 ? parseFloat(parts[0]) || 0 : 0);
+    }, 0);
+};
+
 export const DuesBillTemplateModern: React.FC<DuesBillTemplateProps> = ({ student, school, classFee, selectedMonthIndex }) => {
     
     const feeRecords = [];
@@ -22,20 +32,34 @@ export const DuesBillTemplateModern: React.FC<DuesBillTemplateProps> = ({ studen
         const status = student[monthKey];
         let statusDotStyle = styles.dotPending;
         let remarks = 'Pending';
+        let displayAmount = classFee;
         
-        let isDueInPeriod = false;
-        if (i <= selectedMonthIndex && (status === 'Dues' || status === 'undefined' || !status)) {
-            isDueInPeriod = true;
-        }
+        let paidAmount = parsePaidAmount(String(status));
+        if (paidAmount === Infinity) paidAmount = classFee;
 
-        if (status === 'Dues' || isDueInPeriod) {
-            statusDotStyle = styles.dotDues;
-            remarks = 'Dues';
-            totalDues += classFee;
-        } else if (status && status !== 'undefined') {
-            statusDotStyle = styles.dotPaid;
-            remarks = 'Paid';
-            totalPaid += classFee;
+        if (i <= selectedMonthIndex) {
+            if (paidAmount < classFee) {
+                if (status === 'Dues' || !status || status === 'undefined' || paidAmount === 0) {
+                    statusDotStyle = styles.dotDues;
+                    remarks = 'Dues';
+                    totalDues += classFee;
+                } else {
+                    statusDotStyle = styles.dotDues;
+                    remarks = `Bal: ₹${classFee - paidAmount}`;
+                    totalDues += (classFee - paidAmount);
+                    totalPaid += paidAmount;
+                }
+            } else {
+                statusDotStyle = styles.dotPaid;
+                remarks = 'Paid';
+                totalPaid += paidAmount;
+            }
+        } else {
+            if (paidAmount > 0) {
+                statusDotStyle = styles.dotPaid;
+                remarks = 'Adv. Paid';
+                totalPaid += paidAmount;
+            }
         }
         
         feeRecords.push(
@@ -43,10 +67,13 @@ export const DuesBillTemplateModern: React.FC<DuesBillTemplateProps> = ({ studen
                 <div style={{...styles.statusDot, ...statusDotStyle}}></div>
                 <span style={styles.monthName}>{monthDisplayNames[i]}</span>
                 <span style={styles.monthStatus}>{remarks}</span>
-                <span style={styles.monthAmount}>₹{classFee.toLocaleString()}</span>
+                <span style={styles.monthAmount}>₹{displayAmount.toLocaleString()}</span>
             </div>
         );
     }
+
+    const previousDues = student.previous_dues || 0;
+    totalDues += previousDues;
 
     return (
         <div style={styles.bill}>
@@ -75,8 +102,14 @@ export const DuesBillTemplateModern: React.FC<DuesBillTemplateProps> = ({ studen
                     <p style={styles.sidebarLabel}>Total Paid (YTD)</p>
                     <p style={styles.sidebarValue}>₹{totalPaid.toLocaleString()}</p>
                 </div>
+                {previousDues > 0 && (
+                    <div style={styles.sidebarSection}>
+                        <p style={styles.sidebarLabel}>Prev. Dues</p>
+                        <p style={{...styles.sidebarValue, color: '#b91c1c'}}>₹{previousDues.toLocaleString()}</p>
+                    </div>
+                )}
                 <div style={styles.sidebarTotalSection}>
-                    <p style={styles.sidebarLabel}>Total Dues (YTD)</p>
+                    <p style={styles.sidebarLabel}>Total Dues (Net)</p>
                     <p style={styles.totalDueValue}>₹{totalDues.toLocaleString()}</p>
                 </div>
                 <div style={{...styles.sidebarSection, marginTop: 'auto'}}>
@@ -90,11 +123,11 @@ export const DuesBillTemplateModern: React.FC<DuesBillTemplateProps> = ({ studen
 const styles: { [key: string]: React.CSSProperties } = {
     bill: {
         fontFamily: '"Inter", system-ui, sans-serif',
-        width: '105mm',
-        height: '148.5mm',
+        width: '100%',
+        height: '100%',
         boxSizing: 'border-box',
         display: 'flex',
-        fontSize: '9pt',
+        fontSize: '10pt',
         backgroundColor: '#fff',
         border: '1px solid #f3f4f6',
     },
@@ -102,49 +135,49 @@ const styles: { [key: string]: React.CSSProperties } = {
         flex: 1,
         display: 'flex',
         flexDirection: 'column',
-        padding: '5mm',
+        padding: '6mm',
         overflow: 'hidden',
     },
     sidebar: {
-        width: '35mm',
+        width: '45mm',
         backgroundColor: '#f9fafb',
-        padding: '5mm',
+        padding: '6mm',
         display: 'flex',
         flexDirection: 'column',
         borderLeft: '1px solid #f3f4f6',
     },
     header: {},
-    schoolName: { fontSize: '14pt', fontWeight: 700, margin: 0, color: '#111827', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
-    headerSubtitle: { fontSize: '9pt', margin: '1mm 0 0 0', color: '#6b7280' },
+    schoolName: { fontSize: '16pt', fontWeight: 700, margin: 0, color: '#111827' },
+    headerSubtitle: { fontSize: '10pt', margin: '1mm 0 0 0', color: '#6b7280' },
     studentDetails: { marginTop: '5mm', marginBottom: '4mm' },
-    studentName: { fontSize: '11pt', fontWeight: 600, margin: '1mm 0', color: '#1f2937', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
-    detailItem: { margin: '0.5mm 0', fontSize: '8pt', color: '#4b5563' },
+    studentName: { fontSize: '12pt', fontWeight: 600, margin: '1mm 0', color: '#1f2937' },
+    detailItem: { margin: '0.5mm 0', fontSize: '9pt', color: '#4b5563' },
     feesTable: { flexGrow: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' },
-    tableRow: { display: 'flex', alignItems: 'center', padding: '4px 0', borderBottom: '1px solid #f3f4f6' },
+    tableRow: { display: 'flex', alignItems: 'center', padding: '5px 0', borderBottom: '1px solid #f3f4f6' },
     statusDot: { width: '8px', height: '8px', borderRadius: '50%', flexShrink: 0, marginRight: '8px' },
     dotPaid: { backgroundColor: '#22c55e' },
     dotDues: { backgroundColor: '#ef4444' },
     dotPending: { backgroundColor: '#d1d5db' },
-    monthName: { fontWeight: 500, color: '#374151', fontSize: '8.5pt' },
-    monthStatus: { marginLeft: 'auto', color: '#6b7280', fontSize: '8pt' },
-    monthAmount: { width: '50px', textAlign: 'right', fontWeight: 500, color: '#111827', fontSize: '8.5pt' },
-    sidebarSection: { marginBottom: '5mm' },
-    sidebarLabel: { fontSize: '8pt', color: '#6b7280', margin: 0, textTransform: 'uppercase' },
-    sidebarValue: { fontSize: '10pt', fontWeight: 600, color: '#1f2937', margin: '1mm 0 0 0' },
+    monthName: { fontWeight: 500, color: '#374151', fontSize: '9.5pt' },
+    monthStatus: { marginLeft: 'auto', color: '#6b7280', fontSize: '9pt' },
+    monthAmount: { width: '60px', textAlign: 'right', fontWeight: 500, color: '#111827', fontSize: '9.5pt' },
+    sidebarSection: { marginBottom: '6mm' },
+    sidebarLabel: { fontSize: '9pt', color: '#6b7280', margin: 0, textTransform: 'uppercase' },
+    sidebarValue: { fontSize: '11pt', fontWeight: 600, color: '#1f2937', margin: '1mm 0 0 0' },
     sidebarTotalSection: {
-        padding: '3mm',
+        padding: '4mm',
         borderRadius: '6px',
         backgroundColor: '#fee2e2',
         textAlign: 'center'
     },
     totalDueValue: {
-        fontSize: '14pt',
+        fontSize: '16pt',
         fontWeight: 700,
         color: '#b91c1c',
         margin: '1mm 0 0 0'
     },
     sidebarNote: {
-        fontSize: '7pt',
+        fontSize: '8pt',
         color: '#6b7280',
         lineHeight: 1.4
     }

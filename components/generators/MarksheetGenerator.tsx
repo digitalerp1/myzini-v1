@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../services/supabase';
 import { ExamResult, Student, OwnerProfile } from '../../types';
@@ -10,6 +11,8 @@ import { MarksheetTemplateModern } from './templates/MarksheetTemplateModern';
 import { MarksheetTemplateProfessional } from './templates/MarksheetTemplateProfessional';
 import { MarksheetTemplateMinimalist } from './templates/MarksheetTemplateMinimalist';
 import { MarksheetTemplateCreative } from './templates/MarksheetTemplateCreative';
+import { MarksheetTemplateGrid } from './templates/MarksheetTemplateGrid';
+import { MarksheetTemplateOfficial } from './templates/MarksheetTemplateOfficial';
 
 interface ExamInfo {
     key: string;
@@ -23,6 +26,8 @@ const marksheetTemplates = [
     { id: 'professional', label: 'Professional', component: MarksheetTemplateProfessional },
     { id: 'minimalist', label: 'Minimalist', component: MarksheetTemplateMinimalist },
     { id: 'creative', label: 'Creative', component: MarksheetTemplateCreative },
+    { id: 'grid', label: 'Detailed Grid', component: MarksheetTemplateGrid },
+    { id: 'official', label: 'Government Style', component: MarksheetTemplateOfficial },
 ];
 
 // Dummy data for rendering realistic previews

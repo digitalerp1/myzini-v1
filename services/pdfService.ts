@@ -1,3 +1,4 @@
+
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import React from 'react';
@@ -5,33 +6,45 @@ import ReactDOM from 'react-dom/client';
 import { Student, OwnerProfile, Class, ExamResult } from '../types';
 import { sanitizeForPath } from '../utils/textUtils';
 
-// Import all ID card templates
+// Import ID card templates
 import { IdCardTemplateClassic } from '../components/generators/templates/IdCardTemplateClassic';
 import { IdCardTemplateModern } from '../components/generators/templates/IdCardTemplateModern';
 import { IdCardTemplateVibrant } from '../components/generators/templates/IdCardTemplateVibrant';
 import { IdCardTemplateOfficial } from '../components/generators/templates/IdCardTemplateOfficial';
 import { IdCardTemplateMinimalist } from '../components/generators/templates/IdCardTemplateMinimalist';
+import { IdCardTemplateCorporate } from '../components/generators/templates/IdCardTemplateCorporate';
+import { IdCardTemplateCreative } from '../components/generators/templates/IdCardTemplateCreative';
+import { IdCardTemplateElegant } from '../components/generators/templates/IdCardTemplateElegant';
 
-// Import all Dues Bill templates
+// Import Dues Bill templates
 import { DuesBillTemplateOfficial } from '../components/generators/templates/DuesBillTemplateOfficial';
 import { DuesBillTemplateCompact } from '../components/generators/templates/DuesBillTemplateCompact';
 import { DuesBillTemplateDetailed } from '../components/generators/templates/DuesBillTemplateDetailed';
 import { DuesBillTemplateSimple } from '../components/generators/templates/DuesBillTemplateSimple';
 import { DuesBillTemplateModern } from '../components/generators/templates/DuesBillTemplateModern';
+import { DuesBillTemplateInvoice } from '../components/generators/templates/DuesBillTemplateInvoice';
+import { DuesBillTemplateStatement } from '../components/generators/templates/DuesBillTemplateStatement';
+import { DuesBillTemplateClassic } from '../components/generators/templates/DuesBillTemplateClassic';
+import { DuesBillTemplateFullRecord } from '../components/generators/templates/DuesBillTemplateFullRecord';
 
-// Import all Marksheet templates
+// Import Marksheet templates
 import { MarksheetTemplateClassic } from '../components/generators/templates/MarksheetTemplateClassic';
 import { MarksheetTemplateModern } from '../components/generators/templates/MarksheetTemplateModern';
 import { MarksheetTemplateProfessional } from '../components/generators/templates/MarksheetTemplateProfessional';
 import { MarksheetTemplateMinimalist } from '../components/generators/templates/MarksheetTemplateMinimalist';
 import { MarksheetTemplateCreative } from '../components/generators/templates/MarksheetTemplateCreative';
+import { MarksheetTemplateGrid } from '../components/generators/templates/MarksheetTemplateGrid';
+import { MarksheetTemplateOfficial } from '../components/generators/templates/MarksheetTemplateOfficial';
 
-// Import all Certificate templates
+// Import Certificate templates
 import { CertificateTemplateFormal } from '../components/generators/templates/CertificateTemplateFormal';
 import { CertificateTemplateModern } from '../components/generators/templates/CertificateTemplateModern';
 import { CertificateTemplateClassic } from '../components/generators/templates/CertificateTemplateClassic';
 import { CertificateTemplateArtistic } from '../components/generators/templates/CertificateTemplateArtistic';
 import { CertificateTemplateAchievement } from '../components/generators/templates/CertificateTemplateAchievement';
+import { CertificateTemplateProfessional1 } from '../components/generators/templates/CertificateTemplateProfessional1';
+import { CertificateTemplateProfessional2 } from '../components/generators/templates/CertificateTemplateProfessional2';
+import { CertificateTemplateProfessional3 } from '../components/generators/templates/CertificateTemplateProfessional3';
 
 const A4_WIDTH_MM = 210;
 const A4_HEIGHT_MM = 297;
@@ -39,10 +52,13 @@ const A4_HEIGHT_MM = 297;
 // Configuration maps
 const ID_CARD_TEMPLATES: { [key: string]: any } = {
     classic: { component: IdCardTemplateClassic, cardsPerPage: 8, orientation: 'h' },
-    modern: { component: IdCardTemplateModern, cardsPerPage: 6, orientation: 'v' },
-    vibrant: { component: IdCardTemplateVibrant, cardsPerPage: 6, orientation: 'v' },
+    modern: { component: IdCardTemplateModern, cardsPerPage: 10, orientation: 'v' },
+    vibrant: { component: IdCardTemplateVibrant, cardsPerPage: 10, orientation: 'v' },
     official: { component: IdCardTemplateOfficial, cardsPerPage: 8, orientation: 'h' },
     minimalist: { component: IdCardTemplateMinimalist, cardsPerPage: 8, orientation: 'h' },
+    corporate: { component: IdCardTemplateCorporate, cardsPerPage: 8, orientation: 'h' },
+    creative: { component: IdCardTemplateCreative, cardsPerPage: 10, orientation: 'v' },
+    elegant: { component: IdCardTemplateElegant, cardsPerPage: 8, orientation: 'h' },
 };
 
 const DUES_BILL_TEMPLATES: { [key: string]: any } = {
@@ -51,6 +67,10 @@ const DUES_BILL_TEMPLATES: { [key: string]: any } = {
     detailed: { component: DuesBillTemplateDetailed },
     simple: { component: DuesBillTemplateSimple },
     modern: { component: DuesBillTemplateModern },
+    invoice: { component: DuesBillTemplateInvoice },
+    statement: { component: DuesBillTemplateStatement },
+    classic: { component: DuesBillTemplateClassic },
+    full_record: { component: DuesBillTemplateFullRecord },
 };
 
 const MARKSHEET_TEMPLATES: { [key: string]: any } = {
@@ -59,6 +79,8 @@ const MARKSHEET_TEMPLATES: { [key: string]: any } = {
     professional: { component: MarksheetTemplateProfessional },
     minimalist: { component: MarksheetTemplateMinimalist },
     creative: { component: MarksheetTemplateCreative },
+    grid: { component: MarksheetTemplateGrid },
+    official: { component: MarksheetTemplateOfficial },
 };
 
 const CERTIFICATE_TEMPLATES: { [key: string]: any } = {
@@ -67,20 +89,29 @@ const CERTIFICATE_TEMPLATES: { [key: string]: any } = {
     classic: { component: CertificateTemplateClassic },
     artistic: { component: CertificateTemplateArtistic },
     achievement: { component: CertificateTemplateAchievement },
+    professional1: { component: CertificateTemplateProfessional1 },
+    professional2: { component: CertificateTemplateProfessional2 },
+    professional3: { component: CertificateTemplateProfessional3 },
 };
 
 const renderComponentToCanvas = async (container: HTMLElement, component: React.ReactElement): Promise<HTMLCanvasElement> => {
     const element = document.createElement('div');
+    element.style.width = '100%';
+    element.style.height = '100%';
     container.appendChild(element);
     const root = ReactDOM.createRoot(element);
     
     await new Promise<void>(resolve => {
         root.render(React.createElement(React.StrictMode, null, component));
-        // Increased timeout for complex renders like marksheets and certificates with QR codes
-        setTimeout(resolve, 2000);
+        setTimeout(resolve, 1500); // Wait for images and fonts
     });
 
-    const canvas = await html2canvas(element, { scale: 2, useCORS: true, logging: false });
+    const canvas = await html2canvas(element, { 
+        scale: 2, // Higher scale for better quality
+        useCORS: true, 
+        logging: false,
+        backgroundColor: '#ffffff'
+    });
     
     root.unmount();
     container.removeChild(element);
@@ -103,48 +134,77 @@ export const generateIdCardsPdf = async (
 
     onProgress(0);
     const pdf = new jsPDF('p', 'mm', 'a4');
+    
+    // Create a temporary container in the body to render the HTML
     const container = document.createElement('div');
     container.style.position = 'absolute';
     container.style.left = '-9999px';
+    container.style.top = '0';
+    // container.style.zIndex = '-1000'; // Ensure it doesn't block UI
     document.body.appendChild(container);
 
     const { component: TemplateComponent, cardsPerPage, orientation } = templateConfig;
     const isVertical = orientation === 'v';
-    const CARD_WIDTH_MM = 85.6, CARD_HEIGHT_MM = 53.98;
-    const cardWidth = isVertical ? CARD_HEIGHT_MM : CARD_WIDTH_MM;
-    const cardHeight = isVertical ? CARD_WIDTH_MM : CARD_HEIGHT_MM;
-    const cols = isVertical ? 2 : 2, rows = isVertical ? 3 : 4;
     
+    // Card dimensions
+    const CARD_WIDTH_MM = 85.6;
+    const CARD_HEIGHT_MM = 53.98;
+    
+    // Use dimensions based on orientation
+    const renderCardWidth = isVertical ? CARD_HEIGHT_MM : CARD_WIDTH_MM;
+    const renderCardHeight = isVertical ? CARD_WIDTH_MM : CARD_HEIGHT_MM;
+
+    // Layout settings
+    const colGap = 10; 
+    const rowGap = 10;
+    const cols = 2;
+    const rows = isVertical ? 5 : 4; // 2x5 for vertical, 2x4 for horizontal
+    
+    // Page Margins
+    const marginLeft = (A4_WIDTH_MM - (cols * renderCardWidth + (cols - 1) * colGap)) / 2;
+    const marginTop = 15; // Top margin
+
     const studentChunks = [];
-    for (let i = 0; i < students.length; i += cardsPerPage) {
-        studentChunks.push(students.slice(i, i + cardsPerPage));
+    const itemsPerPage = cols * rows;
+    for (let i = 0; i < students.length; i += itemsPerPage) {
+        studentChunks.push(students.slice(i, i + itemsPerPage));
     }
 
     for (let i = 0; i < studentChunks.length; i++) {
         const chunk = studentChunks[i];
-        const pageContainer = document.createElement('div');
-        pageContainer.style.width = `${A4_WIDTH_MM}mm`;
-        pageContainer.style.height = `${A4_HEIGHT_MM}mm`;
-        pageContainer.style.display = 'grid';
-        pageContainer.style.gridTemplateColumns = `repeat(${cols}, ${cardWidth}mm)`;
-        pageContainer.style.gridTemplateRows = `repeat(${rows}, ${cardHeight}mm)`;
-        pageContainer.style.justifyContent = 'center';
-        pageContainer.style.alignContent = 'center';
-        pageContainer.style.gap = '5mm';
-        pageContainer.style.padding = '10mm';
-        pageContainer.style.backgroundColor = 'white';
-        pageContainer.style.boxSizing = 'border-box';
-
-        const component = React.createElement(
-            'div', { style: { display: 'contents' } },
-            ...chunk.map(student => React.createElement(TemplateComponent, { key: student.id, student, school }))
+        
+        // Render the entire page as one component to maintain layout
+        const pageComponent = React.createElement(
+            'div', 
+            { 
+                style: { 
+                    width: `${A4_WIDTH_MM}mm`, 
+                    height: `${A4_HEIGHT_MM}mm`, 
+                    backgroundColor: 'white',
+                    paddingTop: `${marginTop}mm`,
+                    paddingLeft: `${marginLeft}mm`,
+                    boxSizing: 'border-box',
+                    display: 'grid',
+                    gridTemplateColumns: `repeat(${cols}, ${renderCardWidth}mm)`,
+                    gridAutoRows: `${renderCardHeight}mm`,
+                    columnGap: `${colGap}mm`,
+                    rowGap: `${rowGap}mm`,
+                } 
+            },
+            ...chunk.map(student => 
+                React.createElement(
+                    'div', 
+                    { style: { width: '100%', height: '100%', overflow: 'hidden' } }, 
+                    React.createElement(TemplateComponent, { key: student.id, student, school })
+                )
+            )
         );
 
-        const canvas = await renderComponentToCanvas(container, component);
-        const imgData = canvas.toDataURL('image/png');
+        const canvas = await renderComponentToCanvas(container, pageComponent);
+        const imgData = canvas.toDataURL('image/jpeg', 0.95); // JPEG is faster and smaller
         
         if (i > 0) pdf.addPage();
-        pdf.addImage(imgData, 'PNG', 0, 0, A4_WIDTH_MM, A4_HEIGHT_MM);
+        pdf.addImage(imgData, 'JPEG', 0, 0, A4_WIDTH_MM, A4_HEIGHT_MM);
 
         onProgress(Math.round(((i + 1) / studentChunks.length) * 100));
     }
@@ -171,7 +231,7 @@ export const generateDuesBillPdf = async (
     document.body.appendChild(container);
 
     const { component: TemplateComponent } = templateConfig;
-    const billsPerPage = 4;
+    const billsPerPage = 2;
     const studentChunks = Array.from({ length: Math.ceil(students.length / billsPerPage) }, (_, i) =>
         students.slice(i * billsPerPage, i * billsPerPage + billsPerPage)
     );
@@ -180,27 +240,39 @@ export const generateDuesBillPdf = async (
     const selectedMonthIndex = monthNames.indexOf(selectedMonth);
     if (selectedMonthIndex === -1) throw new Error("Invalid month selected.");
 
+    // Dimensions for 2 bills per page
+    const pagePadding = 5; // 5mm padding around page
+    const gap = 5; // 5mm gap between bills
+    // Calculation: (297 - (5 top + 5 bottom) - 5 gap) / 2 = 141mm height per bill
+    const billHeight = 140; 
+    // Calculation: 210 - (5 left + 5 right) = 200mm width
+    const billWidth = 200;
+
     for (let i = 0; i < studentChunks.length; i++) {
         const chunk = studentChunks[i];
         
+        // Layout: 2 Rows (Bills), 1 Column. Full width usage.
         const pageComponent = React.createElement(
             'div', { style: {
-                width: `${A4_WIDTH_MM}mm`, height: `${A4_HEIGHT_MM}mm`, display: 'grid',
-                gridTemplateColumns: 'repeat(2, 1fr)', gridTemplateRows: 'repeat(2, 1fr)',
-                backgroundColor: 'white', boxSizing: 'border-box'
+                width: `${A4_WIDTH_MM}mm`, height: `${A4_HEIGHT_MM}mm`, 
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', gap: `${gap}mm`,
+                backgroundColor: 'white', boxSizing: 'border-box', paddingTop: `${pagePadding}mm`, paddingBottom: `${pagePadding}mm`
             }},
-            ...chunk.map(student => React.createElement(TemplateComponent, {
-                key: student.id, student, school,
-                classFee: classFeesMap.get(student.class || '') || 0,
-                selectedMonthIndex: selectedMonthIndex,
-            }))
+            ...chunk.map(student => React.createElement(
+                'div', { style: { width: `${billWidth}mm`, height: `${billHeight}mm`, overflow: 'hidden' } },
+                React.createElement(TemplateComponent, {
+                    key: student.id, student, school,
+                    classFee: classFeesMap.get(student.class || '') || 0,
+                    selectedMonthIndex: selectedMonthIndex,
+                })
+            ))
         );
 
         const canvas = await renderComponentToCanvas(container, pageComponent);
-        const imgData = canvas.toDataURL('image/png');
+        const imgData = canvas.toDataURL('image/jpeg', 0.85);
 
         if (i > 0) pdf.addPage();
-        pdf.addImage(imgData, 'PNG', 0, 0, A4_WIDTH_MM, A4_HEIGHT_MM);
+        pdf.addImage(imgData, 'JPEG', 0, 0, A4_WIDTH_MM, A4_HEIGHT_MM);
         onProgress(Math.round(((i + 1) / studentChunks.length) * 100));
     }
     
@@ -238,10 +310,10 @@ export const generateMarksheetsPdf = async (
         );
 
         const canvas = await renderComponentToCanvas(container, marksheetComponent);
-        const imgData = canvas.toDataURL('image/png');
+        const imgData = canvas.toDataURL('image/jpeg', 0.9);
 
         if (i > 0) pdf.addPage();
-        pdf.addImage(imgData, 'PNG', 0, 0, A4_WIDTH_MM, A4_HEIGHT_MM);
+        pdf.addImage(imgData, 'JPEG', 0, 0, A4_WIDTH_MM, A4_HEIGHT_MM);
         onProgress(Math.round(((i + 1) / results.length) * 100));
     }
     
@@ -282,10 +354,10 @@ export const generateCertificatesPdf = async (
         );
 
         const canvas = await renderComponentToCanvas(container, certificateComponent);
-        const imgData = canvas.toDataURL('image/png');
+        const imgData = canvas.toDataURL('image/jpeg', 0.9);
 
         if (i > 0) pdf.addPage();
-        pdf.addImage(imgData, 'PNG', 0, 0, A4_HEIGHT_MM, A4_WIDTH_MM); // Swap width/height for landscape
+        pdf.addImage(imgData, 'JPEG', 0, 0, A4_HEIGHT_MM, A4_WIDTH_MM); // Swap width/height for landscape
         onProgress(Math.round(((i + 1) / qualifiedStudents.length) * 100));
     }
     
