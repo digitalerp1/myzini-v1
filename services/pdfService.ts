@@ -52,6 +52,7 @@ import { ProgressCardTemplateModern } from '../components/generators/templates/P
 import { ProgressCardTemplateCreative } from '../components/generators/templates/ProgressCardTemplateCreative';
 import { ProgressCardTemplateOfficial } from '../components/generators/templates/ProgressCardTemplateOfficial';
 import { ProgressCardTemplateVibrant } from '../components/generators/templates/ProgressCardTemplateVibrant';
+import { ProgressCardTemplateDetailed } from '../components/generators/templates/ProgressCardTemplateDetailed';
 
 const A4_WIDTH_MM = 210;
 const A4_HEIGHT_MM = 297;
@@ -107,6 +108,7 @@ const PROGRESS_CARD_TEMPLATES: { [key: string]: any } = {
     creative: { component: ProgressCardTemplateCreative },
     official: { component: ProgressCardTemplateOfficial },
     vibrant: { component: ProgressCardTemplateVibrant },
+    detailed: { component: ProgressCardTemplateDetailed },
 };
 
 const renderComponentToCanvas = async (container: HTMLElement, component: React.ReactElement): Promise<HTMLCanvasElement> => {

@@ -11,8 +11,10 @@ import { ProgressCardTemplateModern } from './templates/ProgressCardTemplateMode
 import { ProgressCardTemplateCreative } from './templates/ProgressCardTemplateCreative';
 import { ProgressCardTemplateOfficial } from './templates/ProgressCardTemplateOfficial';
 import { ProgressCardTemplateVibrant } from './templates/ProgressCardTemplateVibrant';
+import { ProgressCardTemplateDetailed } from './templates/ProgressCardTemplateDetailed';
 
 const progressTemplates = [
+    { id: 'detailed', label: 'Detailed Matrix', component: ProgressCardTemplateDetailed },
     { id: 'classic', label: 'Classic', component: ProgressCardTemplateClassic },
     { id: 'modern', label: 'Modern', component: ProgressCardTemplateModern },
     { id: 'creative', label: 'Creative', component: ProgressCardTemplateCreative },
@@ -131,28 +133,17 @@ const ProgressCardGenerator: React.FC = () => {
                     } else if (absentList.includes(student.roll_number || '')) {
                         stats.absent++;
                     } else {
-                        // If record exists but student not in present/absent, logic defines this as ambiguous, but usually absent or not enrolled yet. 
-                        // However, "Holiday" is strictly when NO attendance record exists for a date.
-                        // Here we only iterate EXISTING records.
-                        // If a record exists and student is missing, we count as Absent for safety, or ignore. 
-                        // Let's count as Absent to be strict.
                         stats.absent++;
                     }
                 });
 
-                // Calculate Holidays (Days in past where no attendance record exists for class)
-                // Simplified logic: Total days in month - (present + absent) = Holiday + Weekends
-                // This is an estimation based on available data.
                 const attendanceReport = Array.from(monthStats.entries())
                     .sort((a, b) => a[0] - b[0])
                     .map(([monthIndex, stats]) => {
                         const daysInMonth = new Date(currentYear, monthIndex + 1, 0).getDate();
-                        // Only count holidays for months that have passed or are current
                         const today = new Date();
                         if (monthIndex > today.getMonth()) return null;
                         
-                        // Simple heuristic: Any day not marked present/absent is a holiday/weekend
-                        // Max calculation to avoid negative if data is weird
                         let holidays = daysInMonth - (stats.present + stats.absent);
                         if (monthIndex === today.getMonth()) {
                             holidays = today.getDate() - (stats.present + stats.absent);
