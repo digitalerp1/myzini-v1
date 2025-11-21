@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../services/supabase';
 import { Staff, SalaryRecord } from '../types';
@@ -42,11 +43,15 @@ const StaffProfileModal: React.FC<StaffProfileModalProps> = ({ staff, onClose, o
         const joinDate = new Date(staff.joining_date);
         const now = new Date();
         
+        // Calculate completed months based on joining day
         let monthsPassed = (now.getFullYear() - joinDate.getFullYear()) * 12 + (now.getMonth() - joinDate.getMonth());
-        // If joining date is in the current month, don't count it yet unless it's the 1st
-        if (now.getDate() < joinDate.getDate() && now.getMonth() === joinDate.getMonth() && now.getFullYear() === joinDate.getFullYear()) {
+        
+        // If the current day is less than the joining day, the month cycle hasn't completed yet
+        if (now.getDate() < joinDate.getDate()) {
             monthsPassed -= 1;
         }
+        
+        // Ensure we don't get negative months if joined in future (edge case)
         if (monthsPassed < 0) monthsPassed = 0;
 
         const totalPayable = monthsPassed * staff.salary_amount;

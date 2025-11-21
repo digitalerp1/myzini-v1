@@ -46,6 +46,13 @@ import { CertificateTemplateProfessional1 } from '../components/generators/templ
 import { CertificateTemplateProfessional2 } from '../components/generators/templates/CertificateTemplateProfessional2';
 import { CertificateTemplateProfessional3 } from '../components/generators/templates/CertificateTemplateProfessional3';
 
+// Import Progress Card templates
+import { ProgressCardTemplateClassic } from '../components/generators/templates/ProgressCardTemplateClassic';
+import { ProgressCardTemplateModern } from '../components/generators/templates/ProgressCardTemplateModern';
+import { ProgressCardTemplateCreative } from '../components/generators/templates/ProgressCardTemplateCreative';
+import { ProgressCardTemplateOfficial } from '../components/generators/templates/ProgressCardTemplateOfficial';
+import { ProgressCardTemplateVibrant } from '../components/generators/templates/ProgressCardTemplateVibrant';
+
 const A4_WIDTH_MM = 210;
 const A4_HEIGHT_MM = 297;
 
@@ -94,6 +101,14 @@ const CERTIFICATE_TEMPLATES: { [key: string]: any } = {
     professional3: { component: CertificateTemplateProfessional3 },
 };
 
+const PROGRESS_CARD_TEMPLATES: { [key: string]: any } = {
+    classic: { component: ProgressCardTemplateClassic },
+    modern: { component: ProgressCardTemplateModern },
+    creative: { component: ProgressCardTemplateCreative },
+    official: { component: ProgressCardTemplateOfficial },
+    vibrant: { component: ProgressCardTemplateVibrant },
+};
+
 const renderComponentToCanvas = async (container: HTMLElement, component: React.ReactElement): Promise<HTMLCanvasElement> => {
     const element = document.createElement('div');
     element.style.width = '100%';
@@ -135,34 +150,28 @@ export const generateIdCardsPdf = async (
     onProgress(0);
     const pdf = new jsPDF('p', 'mm', 'a4');
     
-    // Create a temporary container in the body to render the HTML
     const container = document.createElement('div');
     container.style.position = 'absolute';
     container.style.left = '-9999px';
     container.style.top = '0';
-    // container.style.zIndex = '-1000'; // Ensure it doesn't block UI
     document.body.appendChild(container);
 
     const { component: TemplateComponent, cardsPerPage, orientation } = templateConfig;
     const isVertical = orientation === 'v';
     
-    // Card dimensions
     const CARD_WIDTH_MM = 85.6;
     const CARD_HEIGHT_MM = 53.98;
     
-    // Use dimensions based on orientation
     const renderCardWidth = isVertical ? CARD_HEIGHT_MM : CARD_WIDTH_MM;
     const renderCardHeight = isVertical ? CARD_WIDTH_MM : CARD_HEIGHT_MM;
 
-    // Layout settings
     const colGap = 10; 
     const rowGap = 10;
     const cols = 2;
-    const rows = isVertical ? 5 : 4; // 2x5 for vertical, 2x4 for horizontal
+    const rows = isVertical ? 5 : 4;
     
-    // Page Margins
     const marginLeft = (A4_WIDTH_MM - (cols * renderCardWidth + (cols - 1) * colGap)) / 2;
-    const marginTop = 15; // Top margin
+    const marginTop = 15;
 
     const studentChunks = [];
     const itemsPerPage = cols * rows;
@@ -173,7 +182,6 @@ export const generateIdCardsPdf = async (
     for (let i = 0; i < studentChunks.length; i++) {
         const chunk = studentChunks[i];
         
-        // Render the entire page as one component to maintain layout
         const pageComponent = React.createElement(
             'div', 
             { 
@@ -201,7 +209,7 @@ export const generateIdCardsPdf = async (
         );
 
         const canvas = await renderComponentToCanvas(container, pageComponent);
-        const imgData = canvas.toDataURL('image/jpeg', 0.95); // JPEG is faster and smaller
+        const imgData = canvas.toDataURL('image/jpeg', 0.95);
         
         if (i > 0) pdf.addPage();
         pdf.addImage(imgData, 'JPEG', 0, 0, A4_WIDTH_MM, A4_HEIGHT_MM);
@@ -240,18 +248,14 @@ export const generateDuesBillPdf = async (
     const selectedMonthIndex = monthNames.indexOf(selectedMonth);
     if (selectedMonthIndex === -1) throw new Error("Invalid month selected.");
 
-    // Dimensions for 2 bills per page
-    const pagePadding = 5; // 5mm padding around page
-    const gap = 5; // 5mm gap between bills
-    // Calculation: (297 - (5 top + 5 bottom) - 5 gap) / 2 = 141mm height per bill
+    const pagePadding = 5;
+    const gap = 5;
     const billHeight = 140; 
-    // Calculation: 210 - (5 left + 5 right) = 200mm width
     const billWidth = 200;
 
     for (let i = 0; i < studentChunks.length; i++) {
         const chunk = studentChunks[i];
         
-        // Layout: 2 Rows (Bills), 1 Column. Full width usage.
         const pageComponent = React.createElement(
             'div', { style: {
                 width: `${A4_WIDTH_MM}mm`, height: `${A4_HEIGHT_MM}mm`, 
@@ -338,7 +342,7 @@ export const generateCertificatesPdf = async (
     if (!templateConfig) throw new Error(`Certificate template "${templateName}" not found.`);
 
     onProgress(0);
-    const pdf = new jsPDF('l', 'mm', 'a4'); // Landscape orientation
+    const pdf = new jsPDF('l', 'mm', 'a4'); 
     const container = document.createElement('div');
     container.style.position = 'absolute';
     container.style.left = '-9999px';
@@ -357,11 +361,56 @@ export const generateCertificatesPdf = async (
         const imgData = canvas.toDataURL('image/jpeg', 0.9);
 
         if (i > 0) pdf.addPage();
-        pdf.addImage(imgData, 'JPEG', 0, 0, A4_HEIGHT_MM, A4_WIDTH_MM); // Swap width/height for landscape
+        pdf.addImage(imgData, 'JPEG', 0, 0, A4_HEIGHT_MM, A4_WIDTH_MM);
         onProgress(Math.round(((i + 1) / qualifiedStudents.length) * 100));
     }
     
     document.body.removeChild(container);
     const className = qualifiedStudents[0]?.student.class || 'certificates';
     pdf.save(`certificates_${sanitizeForPath(className)}_${sanitizeForPath(sessionYear)}.pdf`);
+};
+
+export interface ProgressCardData {
+    student: Student;
+    school: OwnerProfile;
+    attendanceReport: { month: string, present: number, absent: number, holiday: number }[];
+    examReport: { examName: string, percentage: number }[];
+}
+
+export const generateProgressCardsPdf = async (
+    data: ProgressCardData[],
+    templateName: string,
+    onProgress: (progress: number) => void
+): Promise<void> => {
+    if (!data || data.length === 0) throw new Error("No data provided for progress card generation.");
+    const templateConfig = PROGRESS_CARD_TEMPLATES[templateName];
+    if (!templateConfig) throw new Error(`Progress Card template "${templateName}" not found.`);
+
+    onProgress(0);
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    const container = document.createElement('div');
+    container.style.position = 'absolute';
+    container.style.left = '-9999px';
+    document.body.appendChild(container);
+
+    const { component: TemplateComponent } = templateConfig;
+
+    for (let i = 0; i < data.length; i++) {
+        const cardData = data[i];
+        const cardComponent = React.createElement(
+            'div', { style: { width: `${A4_WIDTH_MM}mm`, height: `${A4_HEIGHT_MM}mm`, backgroundColor: 'white' } },
+            React.createElement(TemplateComponent, { data: cardData })
+        );
+
+        const canvas = await renderComponentToCanvas(container, cardComponent);
+        const imgData = canvas.toDataURL('image/jpeg', 0.9);
+
+        if (i > 0) pdf.addPage();
+        pdf.addImage(imgData, 'JPEG', 0, 0, A4_WIDTH_MM, A4_HEIGHT_MM);
+        onProgress(Math.round(((i + 1) / data.length) * 100));
+    }
+    
+    document.body.removeChild(container);
+    const className = data[0]?.student.class || 'progress';
+    pdf.save(`progress_cards_${sanitizeForPath(className)}.pdf`);
 };

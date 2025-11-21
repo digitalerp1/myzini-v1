@@ -1,11 +1,14 @@
+
 import React from 'react';
 import IdCardGenerator from '../components/generators/IdCardGenerator';
 import DuesBillGenerator from '../components/generators/DuesBillGenerator';
 import MarksheetGenerator from '../components/generators/MarksheetGenerator';
 import CertificateGenerator from '../components/generators/CertificateGenerator';
+import ProgressCardGenerator from '../components/generators/ProgressCardGenerator';
 
 const tools = [
     { name: 'ID Card Generator', component: <IdCardGenerator />, description: 'Generate and print student ID cards for an entire class.', enabled: true },
+    { name: 'Progress Card Generator', component: <ProgressCardGenerator />, description: 'Generate comprehensive student progress reports with attendance and exam charts.', enabled: true },
     { name: 'Fees Dues Bill', component: <DuesBillGenerator />, description: 'Create bills for outstanding student fees.', enabled: true },
     { name: 'Marksheet Generator', component: <MarksheetGenerator />, description: 'Generate detailed student marksheets for a specific exam.', enabled: true },
     { name: 'Certificate Generator', component: <CertificateGenerator />, description: 'Create achievement certificates based on exam performance.', enabled: true },
@@ -22,13 +25,13 @@ const GeneratorTools: React.FC = () => {
         <div className="space-y-6">
             <h1 className="text-3xl font-bold text-gray-800">Generator Tools</h1>
             
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
                 {tools.map(tool => (
                     <button 
                         key={tool.name}
                         onClick={() => tool.enabled && setSelectedTool(tool)}
                         disabled={!tool.enabled}
-                        className={`p-4 rounded-lg text-left transition-all border-2
+                        className={`p-4 rounded-lg text-left transition-all border-2 h-full flex flex-col justify-between
                             ${selectedTool.name === tool.name ? 'bg-primary text-white border-primary-dark shadow-lg' : 'bg-white hover:border-primary'}
                             ${!tool.enabled ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : ''}`}
                     >
