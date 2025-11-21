@@ -63,8 +63,8 @@ const Login: React.FC = () => {
     };
 
     return (
-        <div className="min-h-screen bg-light-bg flex items-center justify-center p-4">
-            <div className="w-full max-w-5xl flex rounded-2xl shadow-2xl overflow-hidden bg-white">
+        <div className="min-h-screen bg-light-bg flex items-center justify-center p-4 relative">
+            <div className="w-full max-w-5xl flex rounded-2xl shadow-2xl overflow-hidden bg-white relative z-10">
                 {/* Branding Panel */}
                 <div className="w-1/2 bg-primary p-12 text-white hidden md:flex flex-col justify-between">
                     <div>
@@ -79,7 +79,7 @@ const Login: React.FC = () => {
                 </div>
 
                 {/* Form Panel */}
-                <div className="w-full md:w-1/2 p-8 sm:p-12">
+                <div className="w-full md:w-1/2 p-8 sm:p-12 flex flex-col justify-center">
                     <h2 className="text-3xl font-bold text-gray-800 mb-4 text-center">
                         {mode === 'signIn' ? 'Welcome Back!' : 'Create Your Account'}
                     </h2>
@@ -133,6 +133,11 @@ const Login: React.FC = () => {
                             </button>
                         </form>
                     )}
+                    
+                    <div className="mt-8 pt-6 border-t border-gray-100 text-center">
+                        <p className="text-sm text-gray-500 mb-1">Need help? Contact Support:</p>
+                        <a href="mailto:contact@digitalerp.shop" className="text-primary font-semibold hover:underline">contact@digitalerp.shop</a>
+                    </div>
                 </div>
             </div>
              <style>{`
