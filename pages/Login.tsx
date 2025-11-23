@@ -26,11 +26,28 @@ const Login: React.FC = () => {
     const handleGoogleLogin = async () => {
         setLoading(true);
         try {
-            // Construct the redirect URL explicitly to ensure it is absolute.
-            // window.location.origin typically includes the protocol (e.g., https://example.com)
-            // We fallback to window.location.href for robustness if origin is somehow misbehaving in specific webviews.
-            const redirectUrl = window.location.origin || window.location.href.split('/').slice(0, 3).join('/');
+            // FORCE ABSOLUTE URL Construction
+            // We prefer window.location.origin, but we ensure it starts with http/https.
+            // If origin is missing (some webviews), we construct it from protocol + host.
+            let redirectUrl = window.location.origin;
             
+            if (!redirectUrl || redirectUrl === 'null') {
+                redirectUrl = `${window.location.protocol}//${window.location.host}`;
+            }
+
+            // Ensure we strictly use HTTPS in production if available, or fallback to current protocol
+            // This prevents Supabase from receiving a naked domain like "myzini.digitaler.shop" which causes the "invalid path" error.
+            if (!redirectUrl.startsWith('http')) {
+                redirectUrl = `https://${window.location.host}`;
+            }
+            
+            // Remove any trailing slash to be consistent with Supabase whitelist
+            if (redirectUrl.endsWith('/')) {
+                redirectUrl = redirectUrl.slice(0, -1);
+            }
+
+            console.log("Initiating Google Login with redirect:", redirectUrl);
+
             const { error } = await supabase.auth.signInWithOAuth({
                 provider: 'google',
                 options: {
