@@ -241,7 +241,7 @@ export const ProgressTemplate5: React.FC<{ data: ProgressCardData }> = ({ data }
 
                 {detailedExams?.map((exam, i) => (
                     <div key={i} style={{marginBottom: '15px'}}>
-                        <p style={{backgroundColor: '#000', color: '#fff', padding: '2px 5px', margin: 0}}>> {exam.examName.toUpperCase()}</p>
+                        <p style={{backgroundColor: '#000', color: '#fff', padding: '2px 5px', margin: 0}}>&gt; {exam.examName.toUpperCase()}</p>
                         <table style={{width: '100%', fontSize: '9pt'}}>
                             <tbody>
                                 {exam.subjects.map((s, j) => (

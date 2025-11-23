@@ -77,7 +77,7 @@ const DuesList: React.FC = () => {
     useEffect(() => {
         if (allStudents.length === 0) return;
 
-        const classFeesMap = new Map(classes.map(c => [c.class_name, c.school_fees || 0]));
+        const classFeesMap = new Map<string, number>(classes.map(c => [c.class_name, c.school_fees || 0]));
         const studentsWithCalculatedDues: StudentWithDues[] = [];
 
         allStudents.forEach(student => {

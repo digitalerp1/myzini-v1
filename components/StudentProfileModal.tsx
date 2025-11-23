@@ -208,7 +208,7 @@ const StudentProfileModal: React.FC<StudentProfileModalProps> = ({ student: init
     const finalTotalPaid = totalPaid + otherFeesSummary.paid;
     const finalTotalDues = totalDues + otherFeesSummary.dues + (student.previous_dues || 0);
 
-    const attendanceSummary = Array.from(attendanceStatus.values()).reduce((acc, status) => {
+    const attendanceSummary = Array.from(attendanceStatus.values()).reduce((acc: { present: number; absent: number }, status) => {
         if (status === 'present') acc.present++;
         if (status === 'absent') acc.absent++;
         return acc;

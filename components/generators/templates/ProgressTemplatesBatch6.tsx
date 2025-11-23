@@ -9,7 +9,7 @@ const commonStyles: {[key:string]: React.CSSProperties} = {
     row: { display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }
 };
 
-const SubjectPill = ({ name, marks, total }: { name: string, marks: number, total: number }) => (
+const SubjectPill: React.FC<{ name: string, marks: number, total: number }> = ({ name, marks, total }) => (
     <div style={{backgroundColor: '#fff', border: '1px solid #ddd', borderRadius: '10px', padding: '5px 10px', margin: '2px', display: 'inline-block', fontSize: '9pt'}}>
         <strong>{name}</strong>: {marks}/{total}
     </div>
