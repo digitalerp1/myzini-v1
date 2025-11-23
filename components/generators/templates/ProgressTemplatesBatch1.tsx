@@ -2,7 +2,6 @@
 import React from 'react';
 import { ProgressCardData } from '../../../services/pdfService';
 
-// Common types and helpers
 const commonStyles: {[key:string]: React.CSSProperties} = {
     page: { width: '210mm', height: '297mm', padding: '10mm', boxSizing: 'border-box', backgroundColor: '#fff', fontFamily: 'Arial, sans-serif' },
     header: { display: 'flex', alignItems: 'center', marginBottom: '5mm' },

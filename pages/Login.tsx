@@ -25,18 +25,28 @@ const Login: React.FC = () => {
 
     const handleGoogleLogin = async () => {
         setLoading(true);
-        const { error } = await supabase.auth.signInWithOAuth({
-            provider: 'google',
-            options: {
-                redirectTo: window.location.origin,
-            },
-        });
+        try {
+            // Construct the redirect URL explicitly to ensure it is absolute.
+            // window.location.origin typically includes the protocol (e.g., https://example.com)
+            // We fallback to window.location.href for robustness if origin is somehow misbehaving in specific webviews.
+            const redirectUrl = window.location.origin || window.location.href.split('/').slice(0, 3).join('/');
+            
+            const { error } = await supabase.auth.signInWithOAuth({
+                provider: 'google',
+                options: {
+                    redirectTo: redirectUrl,
+                },
+            });
 
-        if (error) {
-            setMessage({ type: 'error', text: error.message });
+            if (error) {
+                setMessage({ type: 'error', text: error.message });
+                setLoading(false);
+            }
+            // If no error, Supabase will redirect the browser.
+        } catch (err: any) {
+            setMessage({ type: 'error', text: err.message || 'An unexpected error occurred.' });
             setLoading(false);
         }
-        // If no error, Supabase will handle the redirect.
     };
 
     const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -51,9 +61,9 @@ const Login: React.FC = () => {
 
         if (error) {
             setMessage({ type: 'error', text: error.message });
+            setLoading(false);
         }
         // On success, the onAuthStateChange listener in App.tsx will handle navigation.
-        setLoading(false);
     };
 
     const handleSignUp = async (e: React.FormEvent<HTMLFormElement>) => {
