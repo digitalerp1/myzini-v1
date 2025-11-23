@@ -26,24 +26,18 @@ const Login: React.FC = () => {
     const handleGoogleLogin = async () => {
         setLoading(true);
         try {
-            // FORCE ABSOLUTE URL Construction
-            // We prefer window.location.origin, but we ensure it starts with http/https.
-            // If origin is missing (some webviews), we construct it from protocol + host.
+            // DYNAMIC REDIRECT WITH PRODUCTION FIX:
+            // Default to current origin (works for localhost)
             let redirectUrl = window.location.origin;
             
-            if (!redirectUrl || redirectUrl === 'null') {
-                redirectUrl = `${window.location.protocol}//${window.location.host}`;
-            }
+            // Correct Production Domain (fixing the 'digitaler' vs 'digitalerp' typo)
+            const productionUrl = 'https://myzini.digitalerp.shop';
 
-            // Ensure we strictly use HTTPS in production if available, or fallback to current protocol
-            // This prevents Supabase from receiving a naked domain like "myzini.digitaler.shop" which causes the "invalid path" error.
-            if (!redirectUrl.startsWith('http')) {
-                redirectUrl = `https://${window.location.host}`;
-            }
-            
-            // Remove any trailing slash to be consistent with Supabase whitelist
-            if (redirectUrl.endsWith('/')) {
-                redirectUrl = redirectUrl.slice(0, -1);
+            // If we are NOT on localhost, Force the correct production URL.
+            // This ensures that even if Supabase falls back or if the browser is on a wrong subdomain,
+            // it tries to go to the correct place after login.
+            if (!window.location.hostname.includes('localhost') && !window.location.hostname.includes('127.0.0.1')) {
+                redirectUrl = productionUrl;
             }
 
             console.log("Initiating Google Login with redirect:", redirectUrl);
@@ -52,6 +46,10 @@ const Login: React.FC = () => {
                 provider: 'google',
                 options: {
                     redirectTo: redirectUrl,
+                    queryParams: {
+                        access_type: 'offline',
+                        prompt: 'consent',
+                    },
                 },
             });
 

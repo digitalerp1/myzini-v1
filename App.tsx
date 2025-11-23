@@ -33,19 +33,23 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
-  // Check for confirmation URL on initial load. This is done synchronously.
+  // Check for confirmation URL on initial load.
   const isConfirmationFlow = useMemo(() => window.location.hash.includes('type=signup'), []);
 
   useEffect(() => {
-    // If it's a confirmation flow, the EmailConfirmationPage will handle everything.
-    // We just need to prevent the main app from loading.
+    // If it's a confirmation flow, let EmailConfirmationPage handle it.
     if (isConfirmationFlow) {
       setLoading(false);
       return;
     }
 
-    // Regular app flow
     const getSession = async () => {
+      // Manual hash check to help detect credentials if auto-detection lags
+      // and to support the "customize code to detect it" requirement.
+      if (window.location.hash && window.location.hash.includes('access_token')) {
+          console.log("Detected OAuth credentials in URL...");
+      }
+
       const { data: { session } } = await supabase.auth.getSession();
       setSession(session);
       setLoading(false);
@@ -54,6 +58,13 @@ const App: React.FC = () => {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
+      
+      // Clean up the URL if we have a session and a leftover hash
+      if (session && window.location.hash && window.location.hash.includes('access_token')) {
+          // Remove the hash without reloading the page
+          window.history.replaceState(null, '', window.location.pathname);
+      }
+
       if (!session) {
         navigate('/');
       }
