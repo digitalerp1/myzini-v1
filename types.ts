@@ -1,3 +1,4 @@
+
 export interface OwnerProfile {
   uid: string;
   school_name: string;
@@ -111,6 +112,7 @@ export interface Student {
   october?: string;
   november?: string;
   december?: string;
+  previous_dues?: number;
 }
 
 export interface Expense {
