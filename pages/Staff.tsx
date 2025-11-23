@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../services/supabase';
 import { Staff as StaffType, SalaryRecord } from '../types';
@@ -8,6 +9,7 @@ import EditIcon from '../components/icons/EditIcon';
 import DeleteIcon from '../components/icons/DeleteIcon';
 import ViewIcon from '../components/icons/ViewIcon';
 import DownloadIcon from '../components/icons/DownloadIcon';
+import PlusIcon from '../components/icons/PlusIcon';
 
 const Staff: React.FC = () => {
     const [staffList, setStaffList] = useState<StaffType[]>([]);
@@ -159,8 +161,9 @@ const Staff: React.FC = () => {
                     </button>
                     <button
                         onClick={handleAdd}
-                        className="px-5 py-2.5 bg-primary text-white font-semibold rounded-md hover:bg-primary-dark transition-colors"
+                        className="px-5 py-2.5 bg-primary text-white font-semibold rounded-md hover:bg-primary-dark transition-colors flex items-center gap-2"
                     >
+                        <PlusIcon />
                         Add New Staff
                     </button>
                 </div>

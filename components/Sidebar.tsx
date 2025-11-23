@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { NavLink, useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../services/supabase';
@@ -19,6 +20,7 @@ import ExternalLinkIcon from './icons/ExternalLinkIcon';
 import ArchiveIcon from './icons/ArchiveIcon';
 import ToolsIcon from './icons/ToolsIcon';
 import TransportIcon from './icons/TransportIcon';
+import HelpIcon from './icons/HelpIcon';
 
 interface SidebarProps {
     isOpen: boolean;
@@ -118,6 +120,10 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                     <NavLink to="/data-export" onClick={onClose} className={({ isActive }) => `${linkClasses} ${isActive ? activeLinkClasses : ''}`}>
                         <ArchiveIcon />
                         <span className="mx-4">Data Export</span>
+                    </NavLink>
+                    <NavLink to="/how-to-use" onClick={onClose} className={({ isActive }) => `${linkClasses} ${isActive ? activeLinkClasses : ''}`}>
+                        <HelpIcon />
+                        <span className="mx-4">How to Use</span>
                     </NavLink>
 
                      <div className="pt-4 mt-4 border-t border-gray-700">

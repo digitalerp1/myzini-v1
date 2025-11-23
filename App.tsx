@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from './services/supabase';
 import { Session } from '@supabase/supabase-js';
@@ -25,6 +26,7 @@ import StaffAttendance from './pages/StaffAttendance';
 import StaffAttendanceReport from './pages/StaffAttendanceReport';
 import Transport from './pages/Transport';
 import EmailConfirmationPage from './pages/EmailConfirmationPage';
+import HowToUse from './pages/HowToUse';
 
 const App: React.FC = () => {
   const [session, setSession] = useState<Session | null>(null);
@@ -99,6 +101,7 @@ const App: React.FC = () => {
         <Route path="/query-helper" element={<QueryHelper />} />
         <Route path="/data-export" element={<DataExport />} />
         <Route path="/generator-tools" element={<GeneratorTools />} />
+        <Route path="/how-to-use" element={<HowToUse />} />
       </Route>
 
       {externalLinks.map(link => (

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../services/supabase';
 import { Student as StudentType, Class } from '../types';
@@ -8,6 +9,7 @@ import EditIcon from '../components/icons/EditIcon';
 import DeleteIcon from '../components/icons/DeleteIcon';
 import ViewIcon from '../components/icons/ViewIcon';
 import DownloadIcon from '../components/icons/DownloadIcon';
+import PlusIcon from '../components/icons/PlusIcon';
 
 const Students: React.FC = () => {
     const [students, setStudents] = useState<StudentType[]>([]);
@@ -179,8 +181,9 @@ const Students: React.FC = () => {
                     </button>
                     <button
                         onClick={handleAdd}
-                        className="px-5 py-2.5 bg-primary text-white font-semibold rounded-md hover:bg-primary-dark transition-colors"
+                        className="px-5 py-2.5 bg-primary text-white font-semibold rounded-md hover:bg-primary-dark transition-colors flex items-center gap-2"
                     >
+                        <PlusIcon />
                         Add New Student
                     </button>
                 </div>

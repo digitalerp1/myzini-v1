@@ -1,7 +1,8 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { startChatWithHistory } from '../services/geminiService';
 import Spinner from '../components/Spinner';
-import { Chat, Content } from '@google/genai';
+import { Chat, Part } from '@google/genai';
 
 interface Message {
     id: string;
@@ -76,7 +77,10 @@ const QueryHelper: React.FC = () => {
         };
         setMessages(prev => [...prev, userMessage]);
 
-        const messageParts = [];
+        const messageParts: Part[] = [];
+        if (input.trim()) {
+            messageParts.push({ text: input });
+        }
         if (image) {
             messageParts.push({
                 inlineData: {
@@ -85,15 +89,13 @@ const QueryHelper: React.FC = () => {
                 }
             });
         }
-        if (input.trim()) {
-            messageParts.push({ text: input });
-        }
         
         setInput('');
         setImage(null);
 
         try {
-            const responseStream = await chat.sendMessageStream(messageParts);
+            // Ensure messageParts is strictly an array of Part objects
+            const responseStream = await chat.sendMessageStream({ message: messageParts });
             
             let modelResponse = '';
             const modelMessageId = Date.now().toString();
@@ -109,12 +111,20 @@ const QueryHelper: React.FC = () => {
             }
 
         } catch (err) {
+            console.error(err);
             if (err instanceof Error) {
                 setError(err.message);
             } else {
                 setError('An unknown error occurred.');
             }
-            setMessages(prev => [...prev, { id: Date.now().toString(), role: 'model', text: 'Sorry, I encountered an error.'}]);
+            // Remove the placeholder if error occurs immediately, or leave it if partial response
+            setMessages(prev => {
+                const last = prev[prev.length - 1];
+                if (last.role === 'model' && last.text === '...') {
+                    return prev.slice(0, -1).concat({ id: Date.now().toString(), role: 'model', text: 'Sorry, I encountered an error.' });
+                }
+                return prev;
+            });
         } finally {
             setLoading(false);
         }
@@ -136,6 +146,7 @@ const QueryHelper: React.FC = () => {
         <div className="bg-white rounded-xl shadow-lg max-w-4xl mx-auto flex flex-col h-[calc(100vh-8rem)]">
             <div className="p-4 border-b">
                 <h1 className="text-2xl font-bold text-gray-800 text-center">AI Query Helper</h1>
+                <p className="text-center text-sm text-gray-500">Ask about your school data or how to use the app.</p>
             </div>
 
             <div className="flex-grow p-4 overflow-y-auto space-y-4">
@@ -171,14 +182,14 @@ const QueryHelper: React.FC = () => {
                             <button type="button" onClick={() => setImage(null)} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full h-6 w-6 flex items-center justify-center text-xs">&times;</button>
                         </div>
                     )}
-                    <div className="flex items-center border border-gray-300 rounded-lg focus-within:ring-2 focus-within:ring-primary">
+                    <div className="flex items-center border border-gray-300 rounded-lg focus-within:ring-2 focus-within:ring-primary bg-white">
                         <input type="file" ref={fileInputRef} onChange={handleFileChange} accept="image/*" className="hidden" />
-                        <button type="button" onClick={() => fileInputRef.current?.click()} className="p-3 text-gray-500 hover:text-primary">
+                        <button type="button" onClick={() => fileInputRef.current?.click()} className="p-3 text-gray-500 hover:text-primary transition-colors" title="Upload Image">
                             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
                         </button>
                         <textarea
                             rows={1}
-                            className="flex-grow p-3 bg-transparent border-none focus:ring-0 resize-none"
+                            className="flex-grow p-3 bg-transparent border-none focus:ring-0 resize-none outline-none"
                             placeholder="Ask a question or upload an image..."
                             value={input}
                             onChange={(e) => setInput(e.target.value)}
@@ -189,7 +200,7 @@ const QueryHelper: React.FC = () => {
                                 }
                             }}
                         />
-                        <button type="submit" disabled={loading} className="p-3 text-gray-500 hover:text-primary disabled:text-gray-300">
+                        <button type="submit" disabled={loading || (!input.trim() && !image)} className="p-3 text-primary hover:text-primary-dark disabled:text-gray-300 transition-colors">
                              <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-8.707l-3-3a1 1 0 00-1.414 1.414L10.586 9H7a1 1 0 100 2h3.586l-1.293 1.293a1 1 0 101.414 1.414l3-3a1 1 0 000-1.414z" clipRule="evenodd"></path></svg>
                         </button>
                     </div>
