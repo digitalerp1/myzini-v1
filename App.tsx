@@ -27,6 +27,7 @@ import StaffAttendanceReport from './pages/StaffAttendanceReport';
 import Transport from './pages/Transport';
 import EmailConfirmationPage from './pages/EmailConfirmationPage';
 import HowToUse from './pages/HowToUse';
+import UpdatePassword from './pages/UpdatePassword';
 
 const App: React.FC = () => {
   const [session, setSession] = useState<Session | null>(null);
@@ -45,9 +46,8 @@ const App: React.FC = () => {
 
     const getSession = async () => {
       // Manual hash check to help detect credentials if auto-detection lags
-      // and to support the "customize code to detect it" requirement.
       if (window.location.hash && window.location.hash.includes('access_token')) {
-          console.log("Detected OAuth credentials in URL...");
+          console.log("Detected OAuth/MagicLink credentials in URL...");
       }
 
       const { data: { session } } = await supabase.auth.getSession();
@@ -56,16 +56,20 @@ const App: React.FC = () => {
     };
     getSession();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session);
       
+      if (event === 'PASSWORD_RECOVERY') {
+        navigate('/update-password');
+      }
+
       // Clean up the URL if we have a session and a leftover hash
       if (session && window.location.hash && window.location.hash.includes('access_token')) {
           // Remove the hash without reloading the page
           window.history.replaceState(null, '', window.location.pathname);
       }
 
-      if (!session) {
+      if (!session && event !== 'PASSWORD_RECOVERY') {
         navigate('/');
       }
     });
@@ -88,7 +92,16 @@ const App: React.FC = () => {
   }
 
   if (!session) {
-    return <Login />;
+    // If we are on the update password route, we might have a session from the reset link flow momentarily,
+    // but if not, we show Login. The onAuthStateChange handles the redirection flow.
+    // However, if the user directly navigates to /update-password without a session, they should probably login first 
+    // OR we just show Login.
+    return (
+        <Routes>
+            <Route path="/update-password" element={<UpdatePassword />} />
+            <Route path="*" element={<Login />} />
+        </Routes>
+    );
   }
 
   return (
@@ -114,6 +127,8 @@ const App: React.FC = () => {
         <Route path="/generator-tools" element={<GeneratorTools />} />
         <Route path="/how-to-use" element={<HowToUse />} />
       </Route>
+      
+      <Route path="/update-password" element={<UpdatePassword />} />
 
       {externalLinks.map(link => (
         <Route key={link.path} path={`/${link.path}`} element={<ExternalPage />} />
