@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../services/supabase';
 import { Class, Student } from '../types';
@@ -189,7 +190,7 @@ const Attendance: React.FC = () => {
                                 <th scope="col" className="p-4">
                                     <input type="checkbox" className="h-4 w-4 text-primary border-gray-300 rounded focus:ring-primary"
                                      checked={allChecked}
-                                     ref={el => el && (el.indeterminate = isIndeterminate)}
+                                     ref={el => { if (el) el.indeterminate = isIndeterminate; }}
                                      onChange={(e) => toggleAll(e.target.checked)}
                                     />
                                 </th>

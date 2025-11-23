@@ -143,7 +143,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
             // Monthly Fees
             const fee = classFeesMap.get(s.class || '') || 0;
             fullMonthKeys.forEach((month) => {
-                const status = s[month];
+                const status = s[month] as string | undefined;
                 if (!status || status === 'undefined') return;
 
                 if (status === 'Dues') {

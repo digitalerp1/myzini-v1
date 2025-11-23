@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../services/supabase';
 import { Staff } from '../types';
@@ -26,7 +27,7 @@ const StaffAttendance: React.FC = () => {
             
             if (staffError) throw staffError;
             
-            const activeStaff = (staffData as Staff[]).filter(s => s.staff_id);
+            const activeStaff: Staff[] = (staffData as Staff[]).filter(s => s.staff_id);
             setAllStaff(activeStaff);
 
             const today = new Date().toISOString().split('T')[0];
@@ -40,12 +41,11 @@ const StaffAttendance: React.FC = () => {
                 throw attendanceError;
             }
 
-            if (attendanceData && attendanceData.staff_id) {
-                const presentIds = new Set(attendanceData.staff_id.split(','));
+            if (attendanceData && (attendanceData as any).staff_id) {
+                const presentIds = new Set<string>(((attendanceData as any).staff_id as string).split(','));
                 setPresentStaffIds(presentIds);
             } else {
                 // If no record, mark all active staff as present by default
-                // FIX: Explicitly type the Set to resolve a TypeScript inference issue where the constructor was returning Set<unknown>.
                 const allIds = new Set<string>(activeStaff.map(s => s.staff_id));
                 setPresentStaffIds(allIds);
             }
