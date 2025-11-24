@@ -1,9 +1,16 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../services/supabase';
 import Spinner from '../components/Spinner';
 
 type LoginView = 'signIn' | 'signUp' | 'magicLink' | 'forgotPassword';
+
+// Add type definition for window.turnstile
+declare global {
+    interface Window {
+        turnstile: any;
+    }
+}
 
 const Login: React.FC = () => {
     const [view, setView] = useState<LoginView>('signIn');
@@ -12,18 +19,62 @@ const Login: React.FC = () => {
     const [confirmPassword, setConfirmPassword] = useState('');
     const [loading, setLoading] = useState(false);
     const [message, setMessage] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
+    
+    // Captcha state
+    const [captchaToken, setCaptchaToken] = useState<string>('');
+    const turnstileWidgetId = useRef<string | null>(null);
 
     const resetForm = () => {
         setEmail('');
         setPassword('');
         setConfirmPassword('');
         setMessage(null);
+        setCaptchaToken('');
+        // We rely on useEffect to re-render widget on view change
     };
 
     const handleViewChange = (newView: LoginView) => {
         setView(newView);
         resetForm();
     };
+
+    // Initialize Turnstile when view changes
+    useEffect(() => {
+        setCaptchaToken(''); // Reset token on view change
+        
+        const renderWidget = () => {
+            if (window.turnstile) {
+                // If a widget already exists, remove it first to prevent duplicates or errors
+                if (turnstileWidgetId.current) {
+                    try {
+                        window.turnstile.remove(turnstileWidgetId.current);
+                    } catch (e) {
+                        console.warn("Failed to remove old turnstile widget", e);
+                    }
+                }
+
+                try {
+                    const id = window.turnstile.render('#turnstile-widget', {
+                        sitekey: '0x4AAAAAACCibNfWff6NAVmg',
+                        callback: (token: string) => {
+                            setCaptchaToken(token);
+                        },
+                        'expired-callback': () => {
+                            setCaptchaToken('');
+                        },
+                    });
+                    turnstileWidgetId.current = id;
+                } catch (e) {
+                    console.error("Error rendering Turnstile widget:", e);
+                }
+            }
+        };
+
+        // Short delay to ensure DOM element exists
+        const timer = setTimeout(renderWidget, 100);
+
+        return () => clearTimeout(timer);
+    }, [view]);
 
     const getRedirectUrl = () => {
         let redirectUrl = window.location.origin;
@@ -62,16 +113,26 @@ const Login: React.FC = () => {
 
     const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
+        if (!captchaToken) {
+            setMessage({ type: 'error', text: "Please complete the CAPTCHA verification." });
+            return;
+        }
         setLoading(true);
         setMessage(null);
 
         const { error } = await supabase.auth.signInWithPassword({
             email,
             password,
+            options: {
+                captchaToken,
+            }
         });
 
         if (error) {
             setMessage({ type: 'error', text: error.message });
+            // Reset captcha on error
+            if (window.turnstile) window.turnstile.reset(turnstileWidgetId.current);
+            setCaptchaToken('');
             setLoading(false);
         }
     };
@@ -82,6 +143,10 @@ const Login: React.FC = () => {
             setMessage({ type: 'error', text: "Passwords do not match." });
             return;
         }
+        if (!captchaToken) {
+            setMessage({ type: 'error', text: "Please complete the CAPTCHA verification." });
+            return;
+        }
         setLoading(true);
         setMessage(null);
 
@@ -90,11 +155,14 @@ const Login: React.FC = () => {
             password,
             options: {
                 emailRedirectTo: getRedirectUrl(),
+                captchaToken,
             }
         });
 
         if (error) {
             setMessage({ type: 'error', text: error.message });
+            if (window.turnstile) window.turnstile.reset(turnstileWidgetId.current);
+            setCaptchaToken('');
         } else {
             setMessage({ type: 'success', text: 'Signup successful! Please check your email to verify your account.' });
         }
@@ -103,6 +171,10 @@ const Login: React.FC = () => {
 
     const handleMagicLink = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
+        if (!captchaToken) {
+            setMessage({ type: 'error', text: "Please complete the CAPTCHA verification." });
+            return;
+        }
         setLoading(true);
         setMessage(null);
 
@@ -110,11 +182,14 @@ const Login: React.FC = () => {
             email,
             options: {
                 emailRedirectTo: getRedirectUrl(),
+                captchaToken,
             },
         });
 
         if (error) {
             setMessage({ type: 'error', text: error.message });
+            if (window.turnstile) window.turnstile.reset(turnstileWidgetId.current);
+            setCaptchaToken('');
         } else {
             setMessage({ type: 'success', text: 'Magic link sent! Check your email to sign in.' });
         }
@@ -123,6 +198,10 @@ const Login: React.FC = () => {
 
     const handleResetPassword = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
+        if (!captchaToken) {
+            setMessage({ type: 'error', text: "Please complete the CAPTCHA verification." });
+            return;
+        }
         setLoading(true);
         setMessage(null);
 
@@ -130,15 +209,24 @@ const Login: React.FC = () => {
 
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
             redirectTo: redirectUrl,
+            captchaToken,
         });
 
         if (error) {
             setMessage({ type: 'error', text: error.message });
+            if (window.turnstile) window.turnstile.reset(turnstileWidgetId.current);
+            setCaptchaToken('');
         } else {
             setMessage({ type: 'success', text: 'Password reset link sent! Check your email.' });
         }
         setLoading(false);
     };
+
+    const TurnstileWidget = () => (
+        <div className="flex justify-center my-4">
+            <div id="turnstile-widget"></div>
+        </div>
+    );
 
     const renderForm = () => {
         switch (view) {
@@ -157,6 +245,9 @@ const Login: React.FC = () => {
                             <label htmlFor="confirm-password" className="sr-only">Confirm Password</label>
                             <input id="confirm-password" name="confirm-password" type="password" autoComplete="new-password" required className="input-field" placeholder="Confirm Password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
                         </div>
+                        
+                        <TurnstileWidget />
+
                         <button type="submit" disabled={loading} className="w-full btn-submit">
                             {loading ? <Spinner size="5" /> : 'Sign Up'}
                         </button>
@@ -176,6 +267,9 @@ const Login: React.FC = () => {
                             <label htmlFor="magic-email" className="sr-only">Email address</label>
                             <input id="magic-email" name="email" type="email" autoComplete="email" required className="input-field" placeholder="Email address" value={email} onChange={(e) => setEmail(e.target.value)} />
                         </div>
+
+                        <TurnstileWidget />
+
                         <button type="submit" disabled={loading} className="w-full btn-submit">
                             {loading ? <Spinner size="5" /> : 'Send Magic Link'}
                         </button>
@@ -194,6 +288,9 @@ const Login: React.FC = () => {
                             <label htmlFor="reset-email" className="sr-only">Email address</label>
                             <input id="reset-email" name="email" type="email" autoComplete="email" required className="input-field" placeholder="Email address" value={email} onChange={(e) => setEmail(e.target.value)} />
                         </div>
+
+                        <TurnstileWidget />
+
                         <button type="submit" disabled={loading} className="w-full btn-submit">
                             {loading ? <Spinner size="5" /> : 'Send Reset Link'}
                         </button>
@@ -223,6 +320,8 @@ const Login: React.FC = () => {
                                 Forgot Password?
                             </button>
                         </div>
+
+                        <TurnstileWidget />
 
                         <button type="submit" disabled={loading} className="w-full btn-submit">
                             {loading ? <Spinner size="5" /> : 'Sign In'}
