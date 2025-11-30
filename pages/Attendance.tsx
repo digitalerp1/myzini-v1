@@ -40,8 +40,7 @@ const Attendance: React.FC = () => {
         const { data, error } = await supabase
             .from('students')
             .select('*')
-            .eq('class', classToSelect.class_name)
-            .order('roll_number');
+            .eq('class', classToSelect.class_name);
 
         if (error) {
             setError(error.message);
@@ -49,6 +48,12 @@ const Attendance: React.FC = () => {
         } else {
             const studentData: Student[] = data || [];
             const validStudents = studentData.filter(s => s.roll_number);
+            
+            // Sort students numerically by roll number (Natural Sort: 1, 2, 10 instead of 1, 10, 2)
+            validStudents.sort((a, b) => {
+                return (a.roll_number || '').localeCompare(b.roll_number || '', undefined, { numeric: true, sensitivity: 'base' });
+            });
+
             setStudents(validStudents);
             const allRolls = new Set(validStudents.map(s => s.roll_number!));
             setPresentRolls(allRolls);
