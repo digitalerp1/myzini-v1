@@ -1,14 +1,12 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../services/supabase';
-import { Student, Class, Attendance, OtherFee } from '../types';
+import { Student, Class, OtherFee } from '../types';
 import Spinner from './Spinner';
 import UserCircleIcon from './icons/UserCircleIcon';
-import MailIcon from './icons/MailIcon';
 import PhoneIcon from './icons/PhoneIcon';
-import LocationIcon from './icons/LocationIcon';
-import CalendarIcon from './icons/CalendarIcon';
 import AcademicCapIcon from './icons/AcademicCapIcon';
+import TransportIcon from './icons/TransportIcon';
 
 
 interface StudentProfileModalProps {
@@ -49,8 +47,13 @@ const StudentProfileModal: React.FC<StudentProfileModalProps> = ({ student: init
     const [error, setError] = useState<string | null>(null);
     const [paymentAction, setPaymentAction] = useState<{ month: string, remaining: number } | null>(null);
     const [customAmount, setCustomAmount] = useState<string>('');
+    
+    // New State for Driver and Attendance UI
+    const [assignedDriver, setAssignedDriver] = useState<{ name: string; van_number: string } | null>(null);
+    const [showAllAttendance, setShowAllAttendance] = useState(false);
 
     const currentYear = new Date().getFullYear();
+    const currentMonthIndex = new Date().getMonth();
 
      useEffect(() => {
         const channel = supabase.channel(`student-profile-${initialStudent.id}`)
@@ -68,6 +71,33 @@ const StudentProfileModal: React.FC<StudentProfileModalProps> = ({ student: init
             supabase.removeChannel(channel);
         };
     }, [initialStudent.id]);
+
+    // Fetch Assigned Driver
+    useEffect(() => {
+        const fetchDriver = async () => {
+            if (!student.class || !student.roll_number) return;
+            
+            const { data, error } = await supabase
+                .from('driver')
+                .select('name, van_number, students_list');
+            
+            if (data) {
+                // Find the driver who has this student in their list
+                const match = data.find((d: any) => 
+                    d.students_list?.some((s: any) => 
+                        s.class === student.class && s.roll_number === student.roll_number
+                    )
+                );
+                
+                if (match) {
+                    setAssignedDriver({ name: match.name, van_number: match.van_number });
+                } else {
+                    setAssignedDriver(null);
+                }
+            }
+        };
+        fetchDriver();
+    }, [student.class, student.roll_number]);
 
 
     const fetchAttendanceData = useCallback(async () => {
@@ -307,35 +337,25 @@ const StudentProfileModal: React.FC<StudentProfileModalProps> = ({ student: init
 
         for (let day = 1; day <= daysInMonth; day++) {
             const fullDate = new Date(year, month, day);
-            // Manually format to YYYY-MM-DD to match database format and avoid timezone shifts
             const dateString = `${fullDate.getFullYear()}-${String(fullDate.getMonth() + 1).padStart(2, '0')}-${String(fullDate.getDate()).padStart(2, '0')}`;
             
             let statusClass = 'bg-gray-100 text-gray-700 hover:bg-gray-200';
             let title = '';
             const status = attendanceStatus.get(dateString);
 
-            // Logic:
-            // 1. Future dates -> Default Gray (No status)
-            // 2. Present -> Green
-            // 3. Absent -> Red
-            // 4. Past date AND No Class Attendance Record -> Yellow (Holiday)
-            // 5. Past date AND Class Attendance Record exists but Student has no status -> Gray (Implicit Absent or Data Missing)
-
             if (fullDate > today) {
                 statusClass = 'bg-gray-50 text-gray-400'; // Future
                 title = 'Future Date';
             } else if (status === 'present') {
-                statusClass = 'bg-green-500 text-white font-bold';
+                statusClass = 'bg-green-500 text-white font-bold shadow-sm';
                 title = 'Present';
             } else if (status === 'absent') {
-                statusClass = 'bg-red-500 text-white font-bold';
+                statusClass = 'bg-red-500 text-white font-bold shadow-sm';
                 title = 'Absent';
             } else if (!classAttendanceDates.has(dateString)) {
-                // Date is in the past (or today) AND no attendance was taken for the class
-                statusClass = 'bg-yellow-400 text-white font-bold';
-                title = 'Holiday';
+                statusClass = 'bg-yellow-100 text-yellow-800 font-bold';
+                title = 'Holiday / No School';
             } else {
-                // Date is in the past, attendance WAS taken for class, but this student has no record
                 title = 'No Data';
             }
 
@@ -385,6 +405,16 @@ const StudentProfileModal: React.FC<StudentProfileModalProps> = ({ student: init
                                 <InfoItem label="Registration Date" value={new Date(student.registration_date).toLocaleDateString()} />
                                 <InfoItem label="Aadhar" value={student.aadhar} />
                                 <InfoItem label="Previous School" value={student.previous_school_name} />
+                                {assignedDriver && (
+                                    <>
+                                        <div className="pt-2 border-t border-gray-100"></div>
+                                        <div className="flex items-center gap-2 text-primary font-semibold">
+                                            <TransportIcon className="w-4 h-4"/> Transport Details
+                                        </div>
+                                        <InfoItem label="Driver Name" value={assignedDriver.name} />
+                                        <InfoItem label="Van Number" value={assignedDriver.van_number} />
+                                    </>
+                                )}
                             </div>
                         </div>
 
@@ -445,28 +475,46 @@ const StudentProfileModal: React.FC<StudentProfileModalProps> = ({ student: init
                                     )}
                                 </div>
                             </div>
+                            
                             <div className="bg-white p-6 rounded-xl shadow-md">
-                                <h4 className="text-xl font-bold text-gray-800 mb-2">Attendance Calendar {currentYear}</h4>
-                                 <div className="flex items-center gap-4 text-xs mb-4 text-gray-600">
+                                <div className="flex justify-between items-center mb-4">
+                                    <h4 className="text-xl font-bold text-gray-800">Attendance ({currentYear})</h4>
+                                    <button 
+                                        onClick={() => setShowAllAttendance(!showAllAttendance)}
+                                        className="text-sm text-primary hover:text-primary-dark underline"
+                                    >
+                                        {showAllAttendance ? 'Hide History' : 'Show More Attendance Records'}
+                                    </button>
+                                </div>
+                                
+                                <div className="flex flex-wrap items-center gap-4 text-xs mb-4 text-gray-600 bg-gray-50 p-2 rounded-lg">
                                     <span className="flex items-center gap-1.5"><span className="w-3 h-3 bg-green-500 rounded-sm"></span>Present ({attendanceSummary.present})</span>
                                     <span className="flex items-center gap-1.5"><span className="w-3 h-3 bg-red-500 rounded-sm"></span>Absent ({attendanceSummary.absent})</span>
-                                    <span className="flex items-center gap-1.5"><span className="w-3 h-3 bg-yellow-400 rounded-sm"></span>Holiday</span>
+                                    <span className="flex items-center gap-1.5"><span className="w-3 h-3 bg-yellow-100 text-yellow-800 border border-yellow-200 rounded-sm"></span>Holiday</span>
                                 </div>
-                                {loadingAttendance ? <div className="flex justify-center items-center h-64"><Spinner size="10"/></div> :
+
+                                {loadingAttendance ? <div className="flex justify-center items-center h-48"><Spinner size="10"/></div> :
                                  !student.roll_number ? <p className="text-center text-gray-500 py-10">Student has no roll number assigned. Cannot display attendance.</p> :
                                 (
-                                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                                        {monthNames.map((name, index) => (
-                                            <div key={name}>
-                                                <h5 className="font-bold text-center mb-2">{name}</h5>
-                                                <div className="grid grid-cols-7 gap-1 text-center text-xs font-semibold text-gray-500 mb-1">
-                                                    <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 transition-all duration-300">
+                                        {(showAllAttendance ? monthNames : [monthNames[currentMonthIndex]]).map((name, i) => {
+                                            // Handle correct month index mapping. 
+                                            // If showing all, index is 'i'. 
+                                            // If showing only current, we need the actual index of that month.
+                                            const monthIdx = showAllAttendance ? i : currentMonthIndex;
+                                            
+                                            return (
+                                                <div key={name} className="border border-gray-100 rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow">
+                                                    <h5 className="font-bold text-center mb-2 text-gray-700 border-b border-gray-100 pb-1">{name}</h5>
+                                                    <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-semibold text-gray-400 mb-1">
+                                                        <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
+                                                    </div>
+                                                    <div className="grid grid-cols-7 gap-1">
+                                                        {generateCalendarDays(currentYear, monthIdx)}
+                                                    </div>
                                                 </div>
-                                                <div className="grid grid-cols-7 gap-1">
-                                                    {generateCalendarDays(currentYear, index)}
-                                                </div>
-                                            </div>
-                                        ))}
+                                            );
+                                        })}
                                     </div>
                                 )}
                             </div>
