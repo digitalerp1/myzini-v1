@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../services/supabase';
 import { Driver, Student, Class } from '../types';
@@ -20,7 +21,7 @@ const DriverProfileModal: React.FC<DriverProfileModalProps> = ({ driver: initial
     const [classes, setClasses] = useState<Class[]>([]);
     const [studentsInClass, setStudentsInClass] = useState<Student[]>([]);
     const [selectedClass, setSelectedClass] = useState('');
-    const [selectedStudentId, setSelectedStudentId] = useState<number | ''>('');
+    const [selectedStudentIds, setSelectedStudentIds] = useState<number[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -46,39 +47,63 @@ const DriverProfileModal: React.FC<DriverProfileModalProps> = ({ driver: initial
 
     const handleClassChange = async (className: string) => {
         setSelectedClass(className);
-        setSelectedStudentId('');
+        setSelectedStudentIds([]);
         if (!className) {
             setStudentsInClass([]);
             return;
         }
         setLoading(true);
-        const { data, error } = await supabase.from('students').select('*').eq('class', className).order('name');
+        const { data, error } = await supabase.from('students').select('*').eq('class', className).order('roll_number');
         if (error) setError(error.message);
         else setStudentsInClass(data as Student[]);
         setLoading(false);
     };
 
-    const handleAddStudent = async () => {
-        if (!selectedStudentId) return;
+    const handleStudentToggle = (studentId: number) => {
+        setSelectedStudentIds(prev => 
+            prev.includes(studentId) 
+                ? prev.filter(id => id !== studentId) 
+                : [...prev, studentId]
+        );
+    };
+
+    const toggleAllStudents = () => {
+        if (selectedStudentIds.length === studentsInClass.length) {
+            setSelectedStudentIds([]);
+        } else {
+            setSelectedStudentIds(studentsInClass.map(s => s.id));
+        }
+    };
+
+    const handleAddStudents = async () => {
+        if (selectedStudentIds.length === 0) return;
         setLoading(true);
         setError(null);
         
-        const studentToAdd = studentsInClass.find(s => s.id === selectedStudentId);
-        if (!studentToAdd || !studentToAdd.roll_number) {
-            setError("Selected student is invalid or missing a roll number.");
-            setLoading(false);
-            return;
-        }
+        // Filter the full student objects based on selected IDs
+        const studentsToAdd = studentsInClass.filter(s => selectedStudentIds.includes(s.id));
         
         const currentList = driver.students_list || [];
-        const isAlreadyAdded = currentList.some(s => s.roll_number === studentToAdd.roll_number && s.class === studentToAdd.class);
-        if (isAlreadyAdded) {
-            setError("This student is already on the list.");
+        
+        // Create a set of existing students for quick duplicate checking (combining class and roll number as unique key)
+        const existingKeys = new Set(currentList.map(s => `${s.class}-${s.roll_number}`));
+        
+        const newEntries = studentsToAdd
+            .filter(s => s.roll_number && s.class) // Ensure they have valid data
+            .filter(s => !existingKeys.has(`${s.class}-${s.roll_number}`)) // Filter duplicates
+            .map(s => ({ 
+                name: s.name, 
+                class: s.class!, 
+                roll_number: s.roll_number! 
+            }));
+
+        if (newEntries.length === 0) {
+            setError("Selected students are already assigned to this driver or have missing data.");
             setLoading(false);
             return;
         }
         
-        const newList = [...currentList, { name: studentToAdd.name, class: studentToAdd.class!, roll_number: studentToAdd.roll_number! }];
+        const newList = [...currentList, ...newEntries];
         const { error: updateError } = await supabase.from('driver').update({ students_list: newList }).eq('id', driver.id);
 
         if (updateError) setError(updateError.message);
@@ -86,7 +111,7 @@ const DriverProfileModal: React.FC<DriverProfileModalProps> = ({ driver: initial
             setIsAdding(false);
             setSelectedClass('');
             setStudentsInClass([]);
-            setSelectedStudentId('');
+            setSelectedStudentIds([]);
         }
         setLoading(false);
     };
@@ -134,25 +159,59 @@ const DriverProfileModal: React.FC<DriverProfileModalProps> = ({ driver: initial
                             <div className="bg-white p-6 rounded-xl shadow-md">
                                 <div className="flex justify-between items-center mb-4">
                                     <h4 className="info-header" style={{border: 'none', margin: 0, padding: 0}}>Assigned Students ({driver.students_list?.length || 0})</h4>
-                                    {!isAdding && <button onClick={() => setIsAdding(true)} className="px-4 py-2 bg-primary text-white text-sm rounded-md hover:bg-primary-dark">Add Student</button>}
+                                    {!isAdding && <button onClick={() => setIsAdding(true)} className="px-4 py-2 bg-primary text-white text-sm rounded-md hover:bg-primary-dark">Add Students</button>}
                                 </div>
                                 
                                 {isAdding && (
-                                    <div className="bg-gray-50 p-4 rounded-lg mb-4 space-y-3">
-                                        <div className="grid grid-cols-2 gap-4">
+                                    <div className="bg-gray-50 p-4 rounded-lg mb-4 space-y-3 border border-gray-200">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">Select Class</label>
                                             <select value={selectedClass} onChange={e => handleClassChange(e.target.value)} className="input-field">
-                                                <option value="">-- Select Class --</option>
+                                                <option value="">-- Choose Class --</option>
                                                 {classes.map(c => <option key={c.id} value={c.class_name}>{c.class_name}</option>)}
                                             </select>
-                                            <select value={selectedStudentId} onChange={e => setSelectedStudentId(Number(e.target.value))} className="input-field" disabled={!selectedClass || loading}>
-                                                <option value="">-- Select Student --</option>
-                                                {studentsInClass.map(s => <option key={s.id} value={s.id}>{s.name} (R: {s.roll_number})</option>)}
-                                            </select>
                                         </div>
-                                        <div className="flex justify-end gap-2">
-                                            <button onClick={() => setIsAdding(false)} className="px-3 py-1 text-sm border border-gray-300 rounded-md">Cancel</button>
-                                            <button onClick={handleAddStudent} disabled={loading || !selectedStudentId} className="px-3 py-1 text-sm bg-green-600 text-white rounded-md disabled:bg-gray-400">
-                                                {loading ? <Spinner size="4"/> : 'Confirm Add'}
+
+                                        <div className={!selectedClass ? 'opacity-50 pointer-events-none' : ''}>
+                                            <div className="flex justify-between items-center mb-2">
+                                                <label className="block text-sm font-medium text-gray-700">Select Students</label>
+                                                <button type="button" onClick={toggleAllStudents} className="text-xs text-primary font-semibold hover:underline">
+                                                    {selectedStudentIds.length === studentsInClass.length && studentsInClass.length > 0 ? 'Deselect All' : 'Select All'}
+                                                </button>
+                                            </div>
+                                            <div className="border border-gray-300 rounded-md h-48 overflow-y-auto bg-white p-2">
+                                                {loading && studentsInClass.length === 0 ? <div className="flex justify-center p-4"><Spinner size="6"/></div> : 
+                                                 studentsInClass.length === 0 ? <p className="text-center text-gray-500 text-sm p-4">No students found in this class.</p> : (
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                        {studentsInClass.map(s => {
+                                                            const isAlreadyAssigned = (driver.students_list || []).some(ds => ds.class === s.class && ds.roll_number === s.roll_number);
+                                                            return (
+                                                                <label key={s.id} className={`flex items-center space-x-2 p-2 rounded-md border ${selectedStudentIds.includes(s.id) ? 'border-primary bg-indigo-50' : 'border-gray-100 hover:bg-gray-50'} cursor-pointer`}>
+                                                                    <input 
+                                                                        type="checkbox" 
+                                                                        checked={selectedStudentIds.includes(s.id)} 
+                                                                        onChange={() => handleStudentToggle(s.id)}
+                                                                        disabled={isAlreadyAssigned}
+                                                                        className="h-4 w-4 text-primary rounded border-gray-300 focus:ring-primary"
+                                                                    />
+                                                                    <div className="flex-1 min-w-0">
+                                                                        <p className={`text-sm font-medium truncate ${isAlreadyAssigned ? 'text-gray-400' : 'text-gray-900'}`}>
+                                                                            {s.name}
+                                                                        </p>
+                                                                        <p className="text-xs text-gray-500">Roll: {s.roll_number} {isAlreadyAssigned && '(Assigned)'}</p>
+                                                                    </div>
+                                                                </label>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        <div className="flex justify-end gap-2 pt-2">
+                                            <button onClick={() => { setIsAdding(false); setSelectedClass(''); }} className="px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-md hover:bg-gray-100">Cancel</button>
+                                            <button onClick={handleAddStudents} disabled={loading || selectedStudentIds.length === 0} className="px-3 py-1.5 text-sm bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400 flex items-center gap-2">
+                                                {loading ? <Spinner size="4"/> : `Add ${selectedStudentIds.length} Students`}
                                             </button>
                                         </div>
                                     </div>
