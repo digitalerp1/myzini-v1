@@ -17,8 +17,8 @@ interface ProfileProps {
 interface BuildingData {
     id: string; // unique ID for React rendering
     name: string;
-    floors: string;
-    rooms: string;
+    floors: string[]; // List of floor names
+    rooms: string[];  // List of room names
 }
 
 const Profile: React.FC<ProfileProps> = ({ user }) => {
@@ -27,6 +27,10 @@ const Profile: React.FC<ProfileProps> = ({ user }) => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
+
+  // Temporary state for inputs
+  const [newFloorInputs, setNewFloorInputs] = useState<{[key: string]: string}>({});
+  const [newRoomInputs, setNewRoomInputs] = useState<{[key: string]: string}>({});
 
   const fetchProfile = useCallback(async () => {
     setLoading(true);
@@ -46,12 +50,13 @@ const Profile: React.FC<ProfileProps> = ({ user }) => {
               const buildings = data.floor_numbers.split('+').map((part: string, index: number) => {
                   if (!part.includes('=')) return null;
                   const [name, rest] = part.split('=');
-                  const [floors, rooms] = rest ? rest.split('@') : ['', ''];
+                  const [floorsStr, roomsStr] = rest ? rest.split('@') : ['', ''];
+                  
                   return {
                       id: Date.now().toString() + index,
                       name: name || '',
-                      floors: floors || '',
-                      rooms: rooms || ''
+                      floors: floorsStr ? floorsStr.split(',').filter(Boolean) : [],
+                      rooms: roomsStr ? roomsStr.split(',').filter(Boolean) : []
                   };
               }).filter(Boolean) as BuildingData[];
               setInfrastructure(buildings);
@@ -63,7 +68,6 @@ const Profile: React.FC<ProfileProps> = ({ user }) => {
     } else if (error && error.code !== 'PGRST116') { // Ignore "no rows found"
       setMessage({ type: 'error', text: `Error fetching profile: ${error.message}` });
     } else {
-        // If no profile exists, initialize a blank one
         setProfile({
             uid: user.id,
             school_name: '',
@@ -89,18 +93,70 @@ const Profile: React.FC<ProfileProps> = ({ user }) => {
     }
   };
 
-  // Infrastructure Handlers
+  // --- Infrastructure Handlers ---
+
   const handleAddBuilding = () => {
-      setInfrastructure([...infrastructure, { id: Date.now().toString(), name: '', floors: '', rooms: '' }]);
+      setInfrastructure([...infrastructure, { id: Date.now().toString(), name: '', floors: [], rooms: [] }]);
   };
 
   const handleRemoveBuilding = (id: string) => {
       setInfrastructure(infrastructure.filter(b => b.id !== id));
   };
 
-  const handleBuildingChange = (id: string, field: keyof BuildingData, value: string) => {
-      setInfrastructure(infrastructure.map(b => b.id === id ? { ...b, [field]: value } : b));
+  const handleBuildingNameChange = (id: string, value: string) => {
+      setInfrastructure(infrastructure.map(b => b.id === id ? { ...b, name: value } : b));
   };
+
+  // Floors
+  const handleAddFloor = (buildingId: string) => {
+      const val = newFloorInputs[buildingId];
+      if (!val || !val.trim()) return;
+
+      setInfrastructure(infrastructure.map(b => {
+          if (b.id === buildingId) {
+              return { ...b, floors: [...b.floors, val.trim()] };
+          }
+          return b;
+      }));
+      setNewFloorInputs({ ...newFloorInputs, [buildingId]: '' });
+  };
+
+  const handleRemoveFloor = (buildingId: string, floorIndex: number) => {
+      setInfrastructure(infrastructure.map(b => {
+          if (b.id === buildingId) {
+              const newFloors = [...b.floors];
+              newFloors.splice(floorIndex, 1);
+              return { ...b, floors: newFloors };
+          }
+          return b;
+      }));
+  };
+
+  // Rooms
+  const handleAddRoom = (buildingId: string) => {
+      const val = newRoomInputs[buildingId];
+      if (!val || !val.trim()) return;
+
+      setInfrastructure(infrastructure.map(b => {
+          if (b.id === buildingId) {
+              return { ...b, rooms: [...b.rooms, val.trim()] };
+          }
+          return b;
+      }));
+      setNewRoomInputs({ ...newRoomInputs, [buildingId]: '' });
+  };
+
+  const handleRemoveRoom = (buildingId: string, roomIndex: number) => {
+      setInfrastructure(infrastructure.map(b => {
+          if (b.id === buildingId) {
+              const newRooms = [...b.rooms];
+              newRooms.splice(roomIndex, 1);
+              return { ...b, rooms: newRooms };
+          }
+          return b;
+      }));
+  };
+
 
   const getSchoolImagePath = async (fileName: string): Promise<string> => {
     if (!profile?.school_name) {
@@ -124,9 +180,14 @@ const Profile: React.FC<ProfileProps> = ({ user }) => {
     const buildingNames = infrastructure.map(b => b.name).filter(n => n.trim() !== '').join(',');
     
     // 2. floor_numbers column gets the complex format: Name=Floors@Rooms+...
+    // Floors are joined by commas, Rooms are joined by commas
     const complexString = infrastructure
         .filter(b => b.name.trim() !== '')
-        .map(b => `${b.name}=${b.floors}@${b.rooms}`)
+        .map(b => {
+            const floorsStr = b.floors.join(',');
+            const roomsStr = b.rooms.join(',');
+            return `${b.name}=${floorsStr}@${roomsStr}`;
+        })
         .join('+');
 
     const dataToSave = {
@@ -207,58 +268,101 @@ const Profile: React.FC<ProfileProps> = ({ user }) => {
         />
 
         {/* Infrastructure Section */}
-        <div className="md:col-span-2 border-t pt-6 mt-2">
-            <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-bold text-gray-800">School Infrastructure</h3>
-                <button type="button" onClick={handleAddBuilding} className="flex items-center text-sm text-primary hover:text-primary-dark">
-                    <PlusIcon className="w-4 h-4 mr-1"/> Add Building
+        <div className="md:col-span-2 border-t pt-6 mt-4">
+            <div className="flex justify-between items-center mb-6">
+                <div>
+                    <h3 className="text-xl font-bold text-gray-800">School Infrastructure</h3>
+                    <p className="text-sm text-gray-500">Manage your buildings, floors, and rooms.</p>
+                </div>
+                <button type="button" onClick={handleAddBuilding} className="flex items-center px-4 py-2 bg-indigo-50 text-indigo-700 rounded-md hover:bg-indigo-100 transition-colors">
+                    <PlusIcon className="w-5 h-5 mr-2"/> Add Building
                 </button>
             </div>
             
-            <div className="space-y-4">
-                {infrastructure.length === 0 && <p className="text-gray-500 text-sm italic">No infrastructure details added. Click 'Add Building' to start.</p>}
-                {infrastructure.map((building, index) => (
-                    <div key={building.id} className="border border-gray-200 rounded-lg p-4 bg-gray-50 relative group">
+            <div className="space-y-6">
+                {infrastructure.length === 0 && (
+                    <div className="text-center py-10 border-2 border-dashed border-gray-300 rounded-lg bg-gray-50">
+                        <p className="text-gray-500">No buildings added yet.</p>
+                        <button type="button" onClick={handleAddBuilding} className="mt-2 text-primary hover:underline font-medium">Add your first building</button>
+                    </div>
+                )}
+                
+                {infrastructure.map((building) => (
+                    <div key={building.id} className="border border-gray-300 rounded-xl p-5 bg-white shadow-sm relative">
                         <button 
                             type="button" 
                             onClick={() => handleRemoveBuilding(building.id)}
-                            className="absolute top-2 right-2 text-gray-400 hover:text-red-500 transition-colors"
+                            className="absolute top-4 right-4 text-gray-400 hover:text-red-500 transition-colors bg-white rounded-full p-1 border border-transparent hover:border-red-100"
                             title="Remove Building"
                         >
                             <DeleteIcon />
                         </button>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase">Building Name/No.</label>
-                                <input 
-                                    type="text" 
-                                    value={building.name} 
-                                    onChange={(e) => handleBuildingChange(building.id, 'name', e.target.value)}
-                                    placeholder="e.g. Block A" 
-                                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm"
-                                />
+                        
+                        {/* Building Name */}
+                        <div className="mb-6">
+                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Building Name / Number</label>
+                            <input 
+                                type="text" 
+                                value={building.name} 
+                                onChange={(e) => handleBuildingNameChange(building.id, e.target.value)}
+                                placeholder="e.g. Main Block, Hostel A, 2563" 
+                                className="block w-full max-w-sm rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm font-semibold"
+                            />
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                            {/* Floors Section */}
+                            <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Floors</label>
+                                <div className="space-y-2 mb-3">
+                                    {building.floors.map((floor, idx) => (
+                                        <div key={idx} className="flex items-center justify-between bg-white px-3 py-2 rounded border border-gray-200 shadow-sm">
+                                            <span className="text-sm text-gray-800">{floor}</span>
+                                            <button type="button" onClick={() => handleRemoveFloor(building.id, idx)} className="text-red-400 hover:text-red-600">
+                                                <span className="text-xs font-bold">✕</span>
+                                            </button>
+                                        </div>
+                                    ))}
+                                    {building.floors.length === 0 && <p className="text-xs text-gray-400 italic">No floors added.</p>}
+                                </div>
+                                <div className="flex gap-2">
+                                    <input 
+                                        type="text" 
+                                        placeholder="Floor Name (e.g. 1st)" 
+                                        value={newFloorInputs[building.id] || ''}
+                                        onChange={(e) => setNewFloorInputs({...newFloorInputs, [building.id]: e.target.value})}
+                                        className="flex-1 rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary text-xs py-1.5"
+                                        onKeyDown={(e) => { if(e.key === 'Enter') { e.preventDefault(); handleAddFloor(building.id); } }}
+                                    />
+                                    <button type="button" onClick={() => handleAddFloor(building.id)} className="px-3 py-1 bg-white border border-gray-300 rounded-md text-xs font-medium hover:bg-gray-100">Add</button>
+                                </div>
                             </div>
-                            <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase">Floors</label>
-                                <input 
-                                    type="text" 
-                                    value={building.floors} 
-                                    onChange={(e) => handleBuildingChange(building.id, 'floors', e.target.value)}
-                                    placeholder="e.g. Ground, 1st, 2nd" 
-                                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm"
-                                />
-                                <span className="text-[10px] text-gray-400">Comma separated</span>
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase">Rooms</label>
-                                <input 
-                                    type="text" 
-                                    value={building.rooms} 
-                                    onChange={(e) => handleBuildingChange(building.id, 'rooms', e.target.value)}
-                                    placeholder="e.g. 101, 102, Lab 1" 
-                                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm"
-                                />
-                                <span className="text-[10px] text-gray-400">Comma separated</span>
+
+                            {/* Rooms Section */}
+                            <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Rooms</label>
+                                <div className="flex flex-wrap gap-2 mb-3">
+                                    {building.rooms.map((room, idx) => (
+                                        <div key={idx} className="flex items-center bg-blue-50 text-blue-700 px-2 py-1 rounded border border-blue-100">
+                                            <span className="text-xs font-medium mr-2">{room}</span>
+                                            <button type="button" onClick={() => handleRemoveRoom(building.id, idx)} className="text-blue-400 hover:text-blue-600 leading-none">
+                                                <span className="text-xs">✕</span>
+                                            </button>
+                                        </div>
+                                    ))}
+                                    {building.rooms.length === 0 && <p className="text-xs text-gray-400 italic w-full">No rooms added.</p>}
+                                </div>
+                                <div className="flex gap-2">
+                                    <input 
+                                        type="text" 
+                                        placeholder="Room No (e.g. 101)" 
+                                        value={newRoomInputs[building.id] || ''}
+                                        onChange={(e) => setNewRoomInputs({...newRoomInputs, [building.id]: e.target.value})}
+                                        className="flex-1 rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary text-xs py-1.5"
+                                        onKeyDown={(e) => { if(e.key === 'Enter') { e.preventDefault(); handleAddRoom(building.id); } }}
+                                    />
+                                    <button type="button" onClick={() => handleAddRoom(building.id)} className="px-3 py-1 bg-white border border-gray-300 rounded-md text-xs font-medium hover:bg-gray-100">Add</button>
+                                </div>
                             </div>
                         </div>
                     </div>

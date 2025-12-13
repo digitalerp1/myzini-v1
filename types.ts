@@ -118,6 +118,11 @@ export interface Student {
   november?: string;
   december?: string;
   previous_dues?: number;
+  
+  // Infrastructure fields
+  building_name?: string;
+  floor_name?: string;
+  room_no?: string;
 }
 
 export interface Expense {

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../services/supabase';
 import { Student, Class } from '../types';
@@ -13,6 +14,13 @@ interface StudentModalProps {
 }
 
 const bloodGroups = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
+
+// Interface for infrastructure options
+interface InfraBuilding {
+    name: string;
+    floors: string[];
+    rooms: string[];
+}
 
 // Simple cache to avoid refetching the school name repeatedly
 let schoolNameCache: string | null = null;
@@ -36,33 +44,78 @@ const StudentModal: React.FC<StudentModalProps> = ({ student, classes, onClose, 
         photo_url: student?.photo_url || '',
         previous_school_name: student?.previous_school_name || '',
         previous_dues: student?.previous_dues || 0,
+        building_name: student?.building_name || '',
+        floor_name: student?.floor_name || '',
+        room_no: student?.room_no || '',
     });
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [schoolName, setSchoolName] = useState<string | null>(schoolNameCache);
     const [isSuggestingRoll, setIsSuggestingRoll] = useState(false);
+    
+    // Infrastructure state
+    const [infrastructure, setInfrastructure] = useState<InfraBuilding[]>([]);
+    const [availableFloors, setAvailableFloors] = useState<string[]>([]);
+    const [availableRooms, setAvailableRooms] = useState<string[]>([]);
 
     useEffect(() => {
-        const fetchSchoolName = async () => {
-            if (schoolNameCache) {
-                setSchoolName(schoolNameCache);
-                return;
-            }
+        const fetchSchoolData = async () => {
             const { data: { user } } = await supabase.auth.getUser();
             if (user) {
                 const { data } = await supabase
                     .from('owner')
-                    .select('school_name')
+                    .select('school_name, floor_numbers')
                     .eq('uid', user.id)
                     .single();
+                
                 if (data) {
-                    schoolNameCache = data.school_name;
-                    setSchoolName(data.school_name);
+                    if (!schoolNameCache) {
+                        schoolNameCache = data.school_name;
+                        setSchoolName(data.school_name);
+                    } else {
+                        setSchoolName(schoolNameCache);
+                    }
+
+                    // Parse Infrastructure
+                    if (data.floor_numbers && typeof data.floor_numbers === 'string') {
+                        try {
+                            const buildings = data.floor_numbers.split('+').map((part: string) => {
+                                if (!part.includes('=')) return null;
+                                const [name, rest] = part.split('=');
+                                const [floorsStr, roomsStr] = rest ? rest.split('@') : ['', ''];
+                                return {
+                                    name: name || '',
+                                    floors: floorsStr ? floorsStr.split(',').filter(Boolean) : [],
+                                    rooms: roomsStr ? roomsStr.split(',').filter(Boolean) : []
+                                };
+                            }).filter(Boolean) as InfraBuilding[];
+                            setInfrastructure(buildings);
+                        } catch (e) {
+                            console.error("Error parsing infrastructure", e);
+                        }
+                    }
                 }
             }
         };
-        fetchSchoolName();
+        fetchSchoolData();
     }, []);
+
+    // Effect to update available floors/rooms when building changes
+    useEffect(() => {
+        if (formData.building_name) {
+            const selectedBuilding = infrastructure.find(b => b.name === formData.building_name);
+            if (selectedBuilding) {
+                setAvailableFloors(selectedBuilding.floors);
+                setAvailableRooms(selectedBuilding.rooms);
+            } else {
+                setAvailableFloors([]);
+                setAvailableRooms([]);
+            }
+        } else {
+            setAvailableFloors([]);
+            setAvailableRooms([]);
+        }
+    }, [formData.building_name, infrastructure]);
 
     useEffect(() => {
         // Only suggest roll number for new students when a class is selected
@@ -223,6 +276,41 @@ const StudentModal: React.FC<StudentModalProps> = ({ student, classes, onClose, 
                         <label className="block text-sm font-medium text-gray-700">Address</label>
                         <textarea name="address" rows={2} value={formData.address} onChange={handleChange} className="mt-1 input-field"/>
                     </div>
+                    
+                    {/* Hostel / Infrastructure Section */}
+                    {infrastructure.length > 0 && (
+                        <div className="md:col-span-2 grid grid-cols-3 gap-4 border-t pt-4 mt-2">
+                            <h3 className="col-span-3 text-sm font-semibold text-gray-600">Accommodation Details</h3>
+                            <div>
+                                <label className="block text-xs font-medium text-gray-700">Building</label>
+                                <select name="building_name" value={formData.building_name} onChange={handleChange} className="mt-1 input-field text-sm">
+                                    <option value="">Select Building</option>
+                                    {infrastructure.map((b, i) => (
+                                        <option key={i} value={b.name}>{b.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-gray-700">Floor</label>
+                                <select name="floor_name" value={formData.floor_name} onChange={handleChange} className="mt-1 input-field text-sm" disabled={!formData.building_name}>
+                                    <option value="">Select Floor</option>
+                                    {availableFloors.map((f, i) => (
+                                        <option key={i} value={f}>{f}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-gray-700">Room</label>
+                                <select name="room_no" value={formData.room_no} onChange={handleChange} className="mt-1 input-field text-sm" disabled={!formData.building_name}>
+                                    <option value="">Select Room</option>
+                                    {availableRooms.map((r, i) => (
+                                        <option key={i} value={r}>{r}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+                    )}
+
                     <div>
                         <label className="block text-sm font-medium text-gray-700">Date of Birth</label>
                         <input type="date" name="date_of_birth" value={formData.date_of_birth} onChange={handleChange} className="mt-1 input-field"/>
