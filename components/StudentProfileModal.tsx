@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../services/supabase';
-import { Student, Class, OtherFee, StudentHostelData } from '../types';
+import { Student, Class, OtherFee, StudentHostelData, HostelFeeRecord } from '../types';
 import Spinner from './Spinner';
 import UserCircleIcon from './icons/UserCircleIcon';
 import PhoneIcon from './icons/PhoneIcon';
@@ -52,6 +52,13 @@ const StudentProfileModal: React.FC<StudentProfileModalProps> = ({ student: init
     // New State for Driver and Attendance UI
     const [assignedDriver, setAssignedDriver] = useState<{ name: string; van_number: string } | null>(null);
     const [showAllAttendance, setShowAllAttendance] = useState(false);
+
+    // Hostel Payment States
+    const [hostelPayAmount, setHostelPayAmount] = useState<string>('');
+    const [hostelPayDesc, setHostelPayDesc] = useState<string>('Hostel Fee Payment');
+    const [hostelDueAmount, setHostelDueAmount] = useState<string>('');
+    const [hostelDueDesc, setHostelDueDesc] = useState<string>('Monthly Rent');
+    const [isHostelProcessing, setIsHostelProcessing] = useState(false);
 
     // Active Tab State
     const [activeTab, setActiveTab] = useState<'info' | 'fees' | 'hostel'>('info');
@@ -153,6 +160,58 @@ const StudentProfileModal: React.FC<StudentProfileModalProps> = ({ student: init
         fetchAttendanceData();
     }, [fetchAttendanceData]);
 
+    // --- Hostel Logic ---
+    const handleAddHostelRecord = async (type: 'Paid' | 'Due') => {
+        const amount = type === 'Paid' ? parseFloat(hostelPayAmount) : parseFloat(hostelDueAmount);
+        const desc = type === 'Paid' ? hostelPayDesc : hostelDueDesc;
+
+        if (isNaN(amount) || amount <= 0) {
+            setError("Please enter a valid amount.");
+            return;
+        }
+
+        setIsHostelProcessing(true);
+        
+        const newRecord: HostelFeeRecord = {
+            id: crypto.randomUUID(),
+            month: desc, // We use month field for description in this flexible ledger
+            amount: amount,
+            status: type,
+            paid_date: type === 'Paid' ? new Date().toISOString() : undefined,
+            description: desc
+        };
+
+        const existingRecords = student.hostel_data?.fee_records || [];
+        const updatedRecords = [...existingRecords, newRecord];
+        
+        // Ensure structure is maintained
+        const updatedHostelData = { 
+            ...(student.hostel_data || { 
+                is_active: true, 
+                building_id: '', building_name: 'Unknown', 
+                floor_id: '', floor_name: '', 
+                room_no: '', joining_date: new Date().toISOString(), monthly_fee: 0 
+            }),
+            fee_records: updatedRecords 
+        };
+
+        const { error: updateError } = await supabase
+            .from('students')
+            .update({ hostel_data: updatedHostelData })
+            .eq('id', student.id);
+
+        if (updateError) {
+            setError(updateError.message);
+        } else {
+            // Reset inputs
+            setHostelPayAmount('');
+            setHostelDueAmount('');
+            if(type === 'Due') setHostelDueDesc('Monthly Rent');
+        }
+        setIsHostelProcessing(false);
+    };
+
+
     const handlePayment = async (month: keyof Student, amountToPay: number) => {
         if (!amountToPay || amountToPay <= 0) {
             setError('Invalid payment amount.');
@@ -252,6 +311,7 @@ const StudentProfileModal: React.FC<StudentProfileModalProps> = ({ student: init
     const hostelData = student.hostel_data as StudentHostelData | undefined;
     const hostelTotalPaid = hostelData?.fee_records?.filter(r => r.status === 'Paid').reduce((sum, r) => sum + r.amount, 0) || 0;
     const hostelTotalDues = hostelData?.fee_records?.filter(r => r.status === 'Due').reduce((sum, r) => sum + r.amount, 0) || 0;
+    const hostelBalance = hostelTotalDues - hostelTotalPaid;
 
 
     const renderFeeStatus = (month: keyof Student) => {
@@ -589,55 +649,105 @@ const StudentProfileModal: React.FC<StudentProfileModalProps> = ({ student: init
                                     </div>
 
                                     {hostelData && (
-                                        <div className="bg-white p-6 rounded-xl shadow-md">
-                                            <h4 className="text-lg font-bold text-gray-800 mb-4">Hostel Fee Ledger</h4>
-                                            
-                                            <div className="grid grid-cols-2 gap-4 mb-4">
-                                                <div className="bg-green-50 p-3 rounded-lg text-center border border-green-100">
-                                                    <p className="text-xs font-bold text-green-600 uppercase">Total Paid</p>
-                                                    <p className="text-xl font-bold text-green-900">₹{hostelTotalPaid.toLocaleString()}</p>
+                                        <>
+                                            <div className="bg-white p-6 rounded-xl shadow-md">
+                                                <h4 className="text-lg font-bold text-gray-800 mb-4">Hostel Fee Ledger</h4>
+                                                
+                                                <div className="grid grid-cols-2 gap-4 mb-4">
+                                                    <div className="bg-green-50 p-3 rounded-lg text-center border border-green-100">
+                                                        <p className="text-xs font-bold text-green-600 uppercase">Total Paid</p>
+                                                        <p className="text-xl font-bold text-green-900">₹{hostelTotalPaid.toLocaleString()}</p>
+                                                    </div>
+                                                    <div className="bg-red-50 p-3 rounded-lg text-center border border-red-100">
+                                                        <p className="text-xs font-bold text-red-600 uppercase">Total Due (Historical)</p>
+                                                        <p className="text-xl font-bold text-red-900">₹{hostelTotalDues.toLocaleString()}</p>
+                                                    </div>
+                                                    <div className="bg-blue-50 p-3 rounded-lg text-center border border-blue-100 col-span-2">
+                                                        <p className="text-xs font-bold text-blue-600 uppercase">Net Balance Pending</p>
+                                                        <p className="text-xl font-bold text-blue-900">₹{hostelBalance.toLocaleString()}</p>
+                                                    </div>
                                                 </div>
-                                                <div className="bg-red-50 p-3 rounded-lg text-center border border-red-100">
-                                                    <p className="text-xs font-bold text-red-600 uppercase">Total Due</p>
-                                                    <p className="text-xl font-bold text-red-900">₹{hostelTotalDues.toLocaleString()}</p>
-                                                </div>
-                                            </div>
 
-                                            <div className="overflow-x-auto border border-gray-200 rounded-lg max-h-60 overflow-y-auto">
-                                                <table className="min-w-full divide-y divide-gray-200 text-sm">
-                                                    <thead className="bg-gray-50 sticky top-0">
-                                                        <tr>
-                                                            <th className="px-4 py-2 text-left font-medium text-gray-500">Month/Desc</th>
-                                                            <th className="px-4 py-2 text-right font-medium text-gray-500">Amount</th>
-                                                            <th className="px-4 py-2 text-center font-medium text-gray-500">Status</th>
-                                                            <th className="px-4 py-2 text-right font-medium text-gray-500">Date</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody className="bg-white divide-y divide-gray-200">
-                                                        {hostelData.fee_records && hostelData.fee_records.length > 0 ? (
-                                                            hostelData.fee_records.map((rec, idx) => (
-                                                                <tr key={idx}>
-                                                                    <td className="px-4 py-2 font-medium">{rec.month}</td>
-                                                                    <td className="px-4 py-2 text-right">₹{rec.amount}</td>
-                                                                    <td className="px-4 py-2 text-center">
-                                                                        <span className={`px-2 py-0.5 rounded text-xs font-bold ${rec.status === 'Paid' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                                                                            {rec.status}
-                                                                        </span>
-                                                                    </td>
-                                                                    <td className="px-4 py-2 text-right text-gray-500">
-                                                                        {rec.paid_date ? new Date(rec.paid_date).toLocaleDateString() : '-'}
-                                                                    </td>
-                                                                </tr>
-                                                            ))
-                                                        ) : (
+                                                <div className="overflow-x-auto border border-gray-200 rounded-lg max-h-60 overflow-y-auto mb-6">
+                                                    <table className="min-w-full divide-y divide-gray-200 text-sm">
+                                                        <thead className="bg-gray-50 sticky top-0">
                                                             <tr>
-                                                                <td colSpan={4} className="px-4 py-4 text-center text-gray-500">No fee records found.</td>
+                                                                <th className="px-4 py-2 text-left font-medium text-gray-500">Description / Month</th>
+                                                                <th className="px-4 py-2 text-right font-medium text-gray-500">Amount</th>
+                                                                <th className="px-4 py-2 text-center font-medium text-gray-500">Type</th>
+                                                                <th className="px-4 py-2 text-right font-medium text-gray-500">Date</th>
                                                             </tr>
-                                                        )}
-                                                    </tbody>
-                                                </table>
+                                                        </thead>
+                                                        <tbody className="bg-white divide-y divide-gray-200">
+                                                            {hostelData.fee_records && hostelData.fee_records.length > 0 ? (
+                                                                hostelData.fee_records.map((rec, idx) => (
+                                                                    <tr key={idx}>
+                                                                        <td className="px-4 py-2 font-medium">{rec.description || rec.month}</td>
+                                                                        <td className="px-4 py-2 text-right">₹{rec.amount}</td>
+                                                                        <td className="px-4 py-2 text-center">
+                                                                            <span className={`px-2 py-0.5 rounded text-xs font-bold ${rec.status === 'Paid' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                                                                                {rec.status}
+                                                                            </span>
+                                                                        </td>
+                                                                        <td className="px-4 py-2 text-right text-gray-500">
+                                                                            {rec.paid_date ? new Date(rec.paid_date).toLocaleDateString() : '-'}
+                                                                        </td>
+                                                                    </tr>
+                                                                ))
+                                                            ) : (
+                                                                <tr>
+                                                                    <td colSpan={4} className="px-4 py-4 text-center text-gray-500">No fee records found.</td>
+                                                                </tr>
+                                                            )}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+
+                                                {/* Manual Payment Section */}
+                                                <div className="border-t pt-4 grid grid-cols-1 md:grid-cols-2 gap-6">
+                                                    <div>
+                                                        <h5 className="font-bold text-gray-700 mb-2">Record Payment</h5>
+                                                        <div className="flex flex-col gap-2">
+                                                            <input 
+                                                                type="text" placeholder="Description (e.g. Partial Payment)" 
+                                                                value={hostelPayDesc} onChange={e => setHostelPayDesc(e.target.value)}
+                                                                className="border p-2 rounded text-sm w-full"
+                                                            />
+                                                            <div className="flex gap-2">
+                                                                <input 
+                                                                    type="number" placeholder="Amount" 
+                                                                    value={hostelPayAmount} onChange={e => setHostelPayAmount(e.target.value)}
+                                                                    className="border p-2 rounded text-sm flex-1"
+                                                                />
+                                                                <button onClick={() => handleAddHostelRecord('Paid')} disabled={isHostelProcessing} className="bg-green-600 text-white px-4 py-2 rounded text-sm font-bold hover:bg-green-700 disabled:opacity-50">
+                                                                    Pay
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div>
+                                                        <h5 className="font-bold text-gray-700 mb-2">Add Due / Charge</h5>
+                                                        <div className="flex flex-col gap-2">
+                                                            <input 
+                                                                type="text" placeholder="Description (e.g. Damage Fine)" 
+                                                                value={hostelDueDesc} onChange={e => setHostelDueDesc(e.target.value)}
+                                                                className="border p-2 rounded text-sm w-full"
+                                                            />
+                                                            <div className="flex gap-2">
+                                                                <input 
+                                                                    type="number" placeholder="Amount" 
+                                                                    value={hostelDueAmount} onChange={e => setHostelDueAmount(e.target.value)}
+                                                                    className="border p-2 rounded text-sm flex-1"
+                                                                />
+                                                                <button onClick={() => handleAddHostelRecord('Due')} disabled={isHostelProcessing} className="bg-red-600 text-white px-4 py-2 rounded text-sm font-bold hover:bg-red-700 disabled:opacity-50">
+                                                                    Add Due
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
                                             </div>
-                                        </div>
+                                        </>
                                     )}
                                 </div>
                             )}

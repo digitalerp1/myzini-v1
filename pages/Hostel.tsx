@@ -5,6 +5,7 @@ import Spinner from '../components/Spinner';
 import HostelIcon from '../components/icons/HostelIcon';
 import UserCircleIcon from '../components/icons/UserCircleIcon';
 import PlusIcon from '../components/icons/PlusIcon';
+import StudentProfileModal from '../components/StudentProfileModal';
 
 interface OccupancyView {
     buildingName: string;
@@ -13,6 +14,7 @@ interface OccupancyView {
         rooms: {
             roomNo: string;
             occupants: Student[];
+            capacity: number; // Defaulting to 4 for now, or could be dynamic
         }[];
     }[];
 }
@@ -31,17 +33,13 @@ const Hostel: React.FC = () => {
     const [totalDues, setTotalDues] = useState(0);
     const [totalRevenue, setTotalRevenue] = useState(0);
 
-    // Modal State for Assign/Pay
-    const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
+    // Modal State
+    const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
     const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
-    const [formData, setFormData] = useState({
-        building: '', floor: '', room: '', fee: 0
-    });
-    const [availableFloors, setAvailableFloors] = useState<any[]>([]);
-    const [availableRooms, setAvailableRooms] = useState<string[]>([]);
     
-    const [isPayModalOpen, setIsPayModalOpen] = useState(false);
-    const [payMonth, setPayMonth] = useState(new Date().toLocaleString('default', { month: 'long' }));
+    // Bulk Dues State
+    const [isBulkDuesOpen, setIsBulkDuesOpen] = useState(false);
+    const [bulkMonth, setBulkMonth] = useState(new Date().toLocaleString('default', { month: 'long' }));
     const [processing, setProcessing] = useState(false);
 
     // Fetch Data
@@ -86,6 +84,7 @@ const Hostel: React.FC = () => {
                             roomCount++;
                             return {
                                 roomNo: r,
+                                capacity: 4, // Assuming 4 beds per room standard
                                 occupants: allStudents.filter(s => 
                                     s.hostel_data?.is_active && 
                                     s.hostel_data.building_name === b.name &&
@@ -99,7 +98,7 @@ const Hostel: React.FC = () => {
             };
         });
         setOccupancyData(occMap);
-        setTotalCapacity(roomCount * 4); // Assuming 4 beds per room as generic estimate
+        setTotalCapacity(roomCount * 4); 
 
         allStudents.forEach(s => {
             if(s.hostel_data && s.hostel_data.is_active) {
@@ -132,139 +131,51 @@ const Hostel: React.FC = () => {
         return matchesSearch; 
     });
 
-    // Handlers for Assignment Modal
-    const handleOpenAssign = (student: Student) => {
+    const handleViewProfile = (student: Student) => {
         setSelectedStudent(student);
-        setFormData({ building: '', floor: '', room: '', fee: student.hostel_data?.monthly_fee || 0 });
-        setAvailableFloors([]);
-        setAvailableRooms([]);
-        setIsAssignModalOpen(true);
+        setIsProfileModalOpen(true);
     };
 
-    const handleBuildingChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-        const bName = e.target.value;
-        const building = buildings.find(b => b.name === bName);
-        setFormData({...formData, building: bName, floor: '', room: ''});
-        setAvailableFloors(building?.floors || []);
-        setAvailableRooms([]);
-    };
-
-    const handleFloorChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-        const fName = e.target.value;
-        const floor = availableFloors.find(f => f.name === fName);
-        setFormData({...formData, floor: fName, room: ''});
-        setAvailableRooms(floor?.rooms || []);
-    };
-
-    const submitAssignment = async () => {
-        if(!selectedStudent || !formData.building || !formData.floor || !formData.room) return;
+    // --- Bulk Dues Logic ---
+    const handleBulkDues = async () => {
+        if (!window.confirm(`Are you sure you want to add dues for ${bulkMonth} to ALL active hostel students?`)) return;
+        
         setProcessing(true);
+        const activeStudents = students.filter(s => s.hostel_data?.is_active);
+        
+        const updates = activeStudents.map(student => {
+            const feeAmount = student.hostel_data?.monthly_fee || 0;
+            const newRecord: HostelFeeRecord = {
+                id: crypto.randomUUID(),
+                month: bulkMonth,
+                amount: feeAmount,
+                status: 'Due',
+                description: 'Monthly Rent'
+            };
+            
+            const updatedRecords = [...(student.hostel_data?.fee_records || []), newRecord];
+            const updatedHostelData = { ...student.hostel_data, fee_records: updatedRecords };
 
-        const building = buildings.find(b => b.name === formData.building);
-        const floor = building?.floors.find(f => f.name === formData.floor);
+            return {
+                id: student.id,
+                hostel_data: updatedHostelData
+            };
+        });
 
-        const newHostelData: StudentHostelData = {
-            is_active: true,
-            building_id: building?.id || '',
-            building_name: building?.name || '',
-            floor_id: floor?.id || '',
-            floor_name: floor?.name || '',
-            room_no: formData.room,
-            joining_date: new Date().toISOString(),
-            monthly_fee: Number(formData.fee),
-            fee_records: selectedStudent.hostel_data?.fee_records || []
-        };
-
-        const { error } = await supabase.from('students').update({
-            hostel_data: newHostelData,
-            building_name: formData.building,
-            floor_name: formData.floor,
-            room_no: formData.room
-        }).eq('id', selectedStudent.id);
-
-        if(!error) {
-            fetchData();
-            setIsAssignModalOpen(false);
+        if (updates.length > 0) {
+            const { error } = await supabase.from('students').upsert(updates);
+            if (error) {
+                alert(`Error adding dues: ${error.message}`);
+            } else {
+                alert(`Successfully added ${bulkMonth} dues to ${updates.length} students.`);
+                setIsBulkDuesOpen(false);
+                fetchData();
+            }
         } else {
-            alert(error.message);
+            alert("No active hostel students found.");
         }
         setProcessing(false);
     };
-
-    // Handlers for Exit
-    const handleExit = async (student: Student) => {
-        if(!window.confirm(`Mark ${student.name} as exited from hostel?`)) return;
-        
-        const updatedData = {
-            ...student.hostel_data,
-            is_active: false,
-            exit_date: new Date().toISOString()
-        };
-
-        await supabase.from('students').update({
-            hostel_data: updatedData,
-            building_name: null, floor_name: null, room_no: null
-        }).eq('id', student.id);
-        fetchData();
-    };
-
-    // Fee Collection Logic
-    const handleOpenPay = (student: Student) => {
-        setSelectedStudent(student);
-        setIsPayModalOpen(true);
-    };
-
-    const submitPay = async () => {
-        if(!selectedStudent || !selectedStudent.hostel_data) return;
-        setProcessing(true);
-
-        const feeAmount = selectedStudent.hostel_data.monthly_fee;
-        const newRecord: HostelFeeRecord = {
-            id: crypto.randomUUID(),
-            month: payMonth,
-            amount: feeAmount,
-            status: 'Paid',
-            paid_date: new Date().toISOString()
-        };
-
-        const existingRecords = selectedStudent.hostel_data.fee_records || [];
-        const monthExistsIndex = existingRecords.findIndex(r => r.month === payMonth && r.status === 'Due');
-        
-        let updatedRecords;
-        if(monthExistsIndex >= 0) {
-            updatedRecords = [...existingRecords];
-            updatedRecords[monthExistsIndex] = newRecord;
-        } else {
-            updatedRecords = [...existingRecords, newRecord];
-        }
-
-        const updatedData = { ...selectedStudent.hostel_data, fee_records: updatedRecords };
-
-        await supabase.from('students').update({ hostel_data: updatedData }).eq('id', selectedStudent.id);
-        
-        setProcessing(false);
-        setIsPayModalOpen(false);
-        fetchData();
-    };
-
-    const addDue = async (student: Student) => {
-        if(!student.hostel_data) return;
-        const feeAmount = student.hostel_data.monthly_fee;
-        const month = prompt("Enter month name to mark as Due:", new Date().toLocaleString('default', { month: 'long' }));
-        if(!month) return;
-
-        const newRecord: HostelFeeRecord = {
-            id: crypto.randomUUID(),
-            month: month,
-            amount: feeAmount,
-            status: 'Due'
-        };
-        const updatedRecords = [...(student.hostel_data.fee_records || []), newRecord];
-        const updatedData = { ...student.hostel_data, fee_records: updatedRecords };
-        
-        await supabase.from('students').update({ hostel_data: updatedData }).eq('id', student.id);
-        fetchData();
-    }
 
 
     if(loading) return <div className="flex justify-center h-96 items-center"><Spinner size="12" /></div>;
@@ -291,7 +202,7 @@ const Hostel: React.FC = () => {
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
                         <div className="bg-white p-6 rounded-xl shadow-sm border-l-4 border-blue-500">
                             <p className="text-gray-500 text-sm font-semibold uppercase">Total Occupants</p>
-                            <p className="text-3xl font-bold text-gray-800 mt-2">{currentOccupancy}</p>
+                            <p className="text-3xl font-bold text-gray-800 mt-2">{currentOccupancy} <span className="text-sm font-normal text-gray-400">/ {totalCapacity}</span></p>
                         </div>
                         <div className="bg-white p-6 rounded-xl shadow-sm border-l-4 border-green-500">
                             <p className="text-gray-500 text-sm font-semibold uppercase">Total Revenue (Paid)</p>
@@ -302,18 +213,28 @@ const Hostel: React.FC = () => {
                             <p className="text-3xl font-bold text-gray-800 mt-2">₹{totalDues.toLocaleString()}</p>
                         </div>
                         <div className="bg-white p-6 rounded-xl shadow-sm border-l-4 border-yellow-500">
-                            <p className="text-gray-500 text-sm font-semibold uppercase">Estimated Capacity</p>
-                            <p className="text-3xl font-bold text-gray-800 mt-2">{totalCapacity} <span className="text-xs text-gray-400 font-normal">(approx)</span></p>
+                            <p className="text-gray-500 text-sm font-semibold uppercase">Vacancy</p>
+                            <p className="text-3xl font-bold text-gray-800 mt-2">{totalCapacity - currentOccupancy} <span className="text-xs text-gray-400 font-normal">Beds Available</span></p>
                         </div>
                     </div>
                     
-                    {/* Recent Transactions Mini Table could go here */}
+                    <div className="flex justify-end">
+                        <button onClick={() => setIsBulkDuesOpen(true)} className="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 shadow-md flex items-center gap-2">
+                            <PlusIcon className="w-5 h-5"/> Add Monthly Dues to All Active
+                        </button>
+                    </div>
                 </div>
             )}
 
             {/* Occupancy Map Tab */}
             {activeTab === 'occupancy' && (
                 <div className="space-y-8 animate-fade-in">
+                    <div className="flex gap-4 mb-4 text-sm">
+                        <div className="flex items-center gap-2"><span className="w-4 h-4 bg-white border border-gray-300 rounded"></span> Vacant</div>
+                        <div className="flex items-center gap-2"><span className="w-4 h-4 bg-indigo-50 border border-indigo-200 rounded"></span> Partially Occupied</div>
+                        <div className="flex items-center gap-2"><span className="w-4 h-4 bg-red-50 border border-red-200 rounded"></span> Full</div>
+                    </div>
+
                     {occupancyData.map((b, idx) => (
                         <div key={idx} className="bg-white rounded-xl shadow-md overflow-hidden border border-gray-200">
                             <div className="bg-gray-800 text-white px-6 py-4 flex justify-between items-center">
@@ -327,21 +248,34 @@ const Hostel: React.FC = () => {
                                             <span className="w-2 h-6 bg-indigo-500 rounded-full"></span> {f.floorName}
                                         </h3>
                                         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                                            {f.rooms.map((r, rIdx) => (
-                                                <div key={rIdx} className={`border rounded-lg p-4 transition-all ${r.occupants.length > 0 ? 'bg-indigo-50 border-indigo-200 shadow-sm' : 'bg-gray-50 border-gray-200 opacity-60'}`}>
-                                                    <div className="flex justify-between items-center mb-2">
-                                                        <span className="font-bold text-gray-800">Room {r.roomNo}</span>
-                                                        <span className={`text-xs font-bold px-2 py-0.5 rounded border ${r.occupants.length > 0 ? 'bg-white border-indigo-200 text-indigo-700' : 'border-gray-300'}`}>{r.occupants.length} Occ.</span>
+                                            {f.rooms.map((r, rIdx) => {
+                                                const occupancy = r.occupants.length;
+                                                const capacity = r.capacity;
+                                                const isFull = occupancy >= capacity;
+                                                const isEmpty = occupancy === 0;
+                                                
+                                                let cardClass = "bg-white border-gray-200";
+                                                if(isFull) cardClass = "bg-red-50 border-red-200 shadow-sm";
+                                                else if(!isEmpty) cardClass = "bg-indigo-50 border-indigo-200 shadow-sm";
+
+                                                return (
+                                                    <div key={rIdx} className={`border rounded-lg p-4 transition-all ${cardClass}`}>
+                                                        <div className="flex justify-between items-center mb-2">
+                                                            <span className="font-bold text-gray-800">Room {r.roomNo}</span>
+                                                            <span className={`text-xs font-bold px-2 py-0.5 rounded border ${isFull ? 'bg-red-100 text-red-800 border-red-200' : 'bg-green-100 text-green-800 border-green-200'}`}>
+                                                                {occupancy}/{capacity}
+                                                            </span>
+                                                        </div>
+                                                        <div className="space-y-1 min-h-[40px]">
+                                                            {r.occupants.length > 0 ? r.occupants.map(occ => (
+                                                                <div key={occ.id} className="text-xs flex items-center gap-1.5 text-gray-700 bg-white/50 p-1 rounded">
+                                                                    <UserCircleIcon className="w-3 h-3 text-gray-500"/> {occ.name}
+                                                                </div>
+                                                            )) : <span className="text-xs text-green-600 italic flex items-center gap-1"><PlusIcon className="w-3 h-3"/> Available</span>}
+                                                        </div>
                                                     </div>
-                                                    <div className="space-y-1">
-                                                        {r.occupants.length > 0 ? r.occupants.map(occ => (
-                                                            <div key={occ.id} className="text-xs flex items-center gap-1.5 text-gray-700 bg-white p-1 rounded border border-indigo-100">
-                                                                <UserCircleIcon className="w-3 h-3 text-indigo-500"/> {occ.name}
-                                                            </div>
-                                                        )) : <span className="text-xs text-gray-400 italic">Vacant</span>}
-                                                    </div>
-                                                </div>
-                                            ))}
+                                                );
+                                            })}
                                         </div>
                                     </div>
                                 ))}
@@ -366,9 +300,11 @@ const Hostel: React.FC = () => {
                             />
                             <svg className="w-5 h-5 text-gray-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
                         </div>
-                        {/* Summary for filtered list could go here */}
-                        <div className="text-sm text-gray-500">
-                            Showing {filteredStudents.length} students
+                        
+                        <div className="flex gap-2">
+                             <button onClick={() => setIsBulkDuesOpen(true)} className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 text-sm font-medium shadow-sm transition-colors">
+                                + Bulk Dues
+                            </button>
                         </div>
                     </div>
 
@@ -391,7 +327,7 @@ const Hostel: React.FC = () => {
                                     const totalDue = hostelFeeRecords.filter(r => r.status === 'Due').reduce((sum, r) => sum + r.amount, 0);
 
                                     return (
-                                        <tr key={student.id} className="hover:bg-gray-50 transition-colors">
+                                        <tr key={student.id} className="hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => handleViewProfile(student)}>
                                             <td className="px-6 py-4 whitespace-nowrap">
                                                 <div className="flex items-center">
                                                     <div className="h-10 w-10 flex-shrink-0">
@@ -430,23 +366,7 @@ const Hostel: React.FC = () => {
                                                 )}
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                                {isHostelite ? (
-                                                    <div className="flex justify-end gap-2">
-                                                        <button onClick={() => addDue(student)} className="text-red-600 hover:text-red-900 bg-red-50 hover:bg-red-100 px-3 py-1 rounded text-xs font-bold transition-colors">
-                                                            + Due
-                                                        </button>
-                                                        <button onClick={() => handleOpenPay(student)} className="text-indigo-600 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 px-3 py-1 rounded text-xs font-bold transition-colors">
-                                                            Collect
-                                                        </button>
-                                                        <button onClick={() => handleExit(student)} title="Mark as Exited" className="text-gray-500 hover:text-gray-700 bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded transition-colors">
-                                                            &times;
-                                                        </button>
-                                                    </div>
-                                                ) : (
-                                                    <button onClick={() => handleOpenAssign(student)} className="text-white bg-green-600 hover:bg-green-700 px-3 py-1.5 rounded text-xs font-bold flex items-center gap-1 ml-auto shadow-sm transition-colors">
-                                                        <PlusIcon className="w-3 h-3"/> Assign
-                                                    </button>
-                                                )}
+                                                <button className="text-indigo-600 hover:text-indigo-900 px-3 py-1 bg-indigo-50 rounded-md text-xs font-bold">Manage</button>
                                             </td>
                                         </tr>
                                     );
@@ -464,81 +384,41 @@ const Hostel: React.FC = () => {
                 </div>
             )}
 
-            {/* Assign Modal */}
-            {isAssignModalOpen && selectedStudent && (
+            {/* Bulk Dues Modal */}
+            {isBulkDuesOpen && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white p-6 rounded-xl w-full max-w-md shadow-2xl">
-                        <h2 className="text-xl font-bold mb-4 text-gray-800 border-b pb-2">Assign Room to {selectedStudent.name}</h2>
-                        <div className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Building</label>
-                                <select className="w-full border border-gray-300 rounded-md p-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none" value={formData.building} onChange={handleBuildingChange}>
-                                    <option value="">Select Building</option>
-                                    {buildings.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Floor</label>
-                                <select className="w-full border border-gray-300 rounded-md p-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none disabled:bg-gray-100" value={formData.floor} onChange={handleFloorChange} disabled={!formData.building}>
-                                    <option value="">Select Floor</option>
-                                    {availableFloors.map(f => <option key={f.id} value={f.name}>{f.name}</option>)}
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Room</label>
-                                <select className="w-full border border-gray-300 rounded-md p-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none disabled:bg-gray-100" value={formData.room} onChange={(e) => setFormData({...formData, room: e.target.value})} disabled={!formData.floor}>
-                                    <option value="">Select Room</option>
-                                    {availableRooms.map(r => <option key={r} value={r}>{r}</option>)}
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Monthly Hostel Fee (₹)</label>
-                                <input type="number" className="w-full border border-gray-300 rounded-md p-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none" value={formData.fee} onChange={(e) => setFormData({...formData, fee: Number(e.target.value)})} />
-                            </div>
+                    <div className="bg-white p-6 rounded-xl w-full max-w-sm shadow-2xl">
+                        <h2 className="text-xl font-bold mb-4 text-gray-800">Add Bulk Hostel Dues</h2>
+                        <p className="text-sm text-gray-600 mb-4">This will add the monthly fee as 'Due' to <strong>ALL</strong> active hostel students.</p>
+                        
+                        <div className="mb-6">
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Select Month</label>
+                            <select className="w-full border border-gray-300 rounded-md p-2 focus:ring-2 focus:ring-indigo-500 outline-none" value={bulkMonth} onChange={(e) => setBulkMonth(e.target.value)}>
+                                {["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"].map(m => (
+                                    <option key={m} value={m}>{m}</option>
+                                ))}
+                            </select>
                         </div>
-                        <div className="mt-6 flex justify-end gap-3 pt-4 border-t border-gray-100">
-                            <button onClick={() => setIsAssignModalOpen(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-md transition-colors">Cancel</button>
-                            <button onClick={submitAssignment} disabled={processing} className="px-6 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 flex items-center gap-2 shadow-sm transition-colors">
-                                {processing && <Spinner size="4"/>} Confirm Assignment
+
+                        <div className="flex justify-end gap-3 pt-2 border-t border-gray-100">
+                            <button onClick={() => setIsBulkDuesOpen(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-md transition-colors" disabled={processing}>Cancel</button>
+                            <button onClick={handleBulkDues} disabled={processing} className="px-6 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 flex items-center gap-2 shadow-sm transition-colors">
+                                {processing && <Spinner size="4"/>} Confirm Add
                             </button>
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* Pay Modal */}
-            {isPayModalOpen && selectedStudent && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white p-6 rounded-xl w-full max-w-sm shadow-2xl">
-                        <h2 className="text-xl font-bold mb-4 text-gray-800 border-b pb-2">Collect Hostel Fee</h2>
-                        <div className="mb-4 bg-indigo-50 p-3 rounded-lg">
-                            <p className="text-sm text-gray-500">Student</p>
-                            <p className="font-bold text-gray-800">{selectedStudent.name}</p>
-                            <p className="text-xs text-gray-500">Room: {selectedStudent.hostel_data?.room_no}</p>
-                        </div>
-                        
-                        <div className="mb-4">
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Select Month</label>
-                            <select className="w-full border border-gray-300 rounded-md p-2 focus:ring-2 focus:ring-indigo-500 outline-none" value={payMonth} onChange={(e) => setPayMonth(e.target.value)}>
-                                {["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"].map(m => (
-                                    <option key={m} value={m}>{m}</option>
-                                ))}
-                            </select>
-                        </div>
-                        
-                        <div className="flex justify-between items-center mb-6 bg-gray-50 p-3 rounded-md border border-gray-200">
-                            <span className="text-gray-600 font-medium">Amount:</span>
-                            <span className="text-xl font-bold text-green-600">₹{selectedStudent.hostel_data?.monthly_fee}</span>
-                        </div>
-
-                        <div className="flex justify-end gap-3 pt-2">
-                            <button onClick={() => setIsPayModalOpen(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-md transition-colors">Cancel</button>
-                            <button onClick={submitPay} disabled={processing} className="px-6 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 flex items-center gap-2 shadow-sm transition-colors">
-                                {processing && <Spinner size="4"/>} Record Payment
-                            </button>
-                        </div>
-                    </div>
-                </div>
+            {isProfileModalOpen && selectedStudent && (
+                 <StudentProfileModal 
+                    student={selectedStudent}
+                    classes={[]} // Passed empty as not needed for hostel focus, could fetch if needed
+                    onClose={() => {
+                        setIsProfileModalOpen(false);
+                        fetchData();
+                    }}
+                 />
             )}
         </div>
     );

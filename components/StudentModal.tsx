@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../services/supabase';
-import { Student, Class, HostelBuilding } from '../types';
+import { Student, Class, HostelBuilding, StudentHostelData } from '../types';
 import Spinner from './Spinner';
 import ImageUpload from './ImageUpload';
 import { sanitizeForPath } from '../utils/textUtils';
@@ -41,6 +41,10 @@ const StudentModal: React.FC<StudentModalProps> = ({ student, classes, onClose, 
         floor_name: student?.floor_name || '',
         room_no: student?.room_no || '',
     });
+    
+    // Additional state for hostel fee in modal (though simpler to just use standard logic)
+    const [hostelFee, setHostelFee] = useState<number>(0);
+
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [schoolName, setSchoolName] = useState<string | null>(schoolNameCache);
@@ -77,7 +81,11 @@ const StudentModal: React.FC<StudentModalProps> = ({ student, classes, onClose, 
             }
         };
         fetchSchoolData();
-    }, []);
+        
+        if (student && student.hostel_data) {
+            setHostelFee(student.hostel_data.monthly_fee || 0);
+        }
+    }, [student]);
 
     // Effect to update available floors when building changes
     useEffect(() => {
@@ -90,14 +98,6 @@ const StudentModal: React.FC<StudentModalProps> = ({ student, classes, onClose, 
             }
         } else {
             setAvailableFloors([]);
-        }
-        // When building changes, floor and room might become invalid if not cleared, 
-        // but we keep them unless the user changes them or we can clear them here if strict.
-        // For better UX, if building changes, we should probably verify if floor still exists or clear it.
-        // Let's rely on the user to pick new ones for simplicity, or:
-        if (!hostelData.find(b => b.name === formData.building_name)) {
-             // If building is invalid/changed, existing floor selection is likely invalid for new building
-             // We can optionally clear floor/room here, but let's just update the lists.
         }
     }, [formData.building_name, hostelData]);
 
@@ -133,7 +133,6 @@ const StudentModal: React.FC<StudentModalProps> = ({ student, classes, onClose, 
                     .neq('roll_number', null);
 
                 if (fetchError) {
-                    // Don't block the user, just log it. They can enter manually.
                     console.error("Error fetching roll numbers:", fetchError);
                 } else if (data) {
                     const maxRollNumber = data.reduce((max, s) => {
@@ -150,7 +149,6 @@ const StudentModal: React.FC<StudentModalProps> = ({ student, classes, onClose, 
             };
             suggestRollNumber();
         } else if (!student && !formData.class) {
-            // Clear roll number if class is deselected for a new student
             setFormData(prev => ({ ...prev, roll_number: '' }));
         }
     }, [formData.class, student]);
@@ -204,10 +202,32 @@ const StudentModal: React.FC<StudentModalProps> = ({ student, classes, onClose, 
             return;
         }
         
-        const dataToSave = { 
+        let dataToSave = { 
             ...formData,
             previous_dues: Number(formData.previous_dues) || 0,
         };
+
+        // Construct complete hostel_data if room assigned
+        if (dataToSave.building_name && dataToSave.floor_name && dataToSave.room_no) {
+            const existingHostelData = student?.hostel_data;
+            const newHostelData: StudentHostelData = {
+                is_active: true,
+                building_id: '', // Not critical for display, name is enough
+                building_name: dataToSave.building_name,
+                floor_id: '',
+                floor_name: dataToSave.floor_name,
+                room_no: dataToSave.room_no,
+                joining_date: existingHostelData?.joining_date || new Date().toISOString(),
+                monthly_fee: Number(hostelFee),
+                fee_records: existingHostelData?.fee_records || []
+            };
+            dataToSave = { ...dataToSave, hostel_data: newHostelData };
+        } else {
+            // If room details cleared, mark inactive? Or just leave it?
+            // If editing and clearing room, we should probably mark inactive or ask user.
+            // For now, if room_no is empty, we don't update hostel_data significantly unless explicitly handling exit in other flows.
+            // But if it's a new student without room, hostel_data remains undefined.
+        }
 
         if (student) { // Editing existing student
             if (!dataToSave.password || dataToSave.password === '') {
@@ -295,8 +315,8 @@ const StudentModal: React.FC<StudentModalProps> = ({ student, classes, onClose, 
                     
                     {/* Hostel / Infrastructure Section */}
                     {hostelData.length > 0 && (
-                        <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-4 border-t border-gray-100 pt-4 mt-2 bg-gray-50 p-4 rounded-lg">
-                            <h3 className="md:col-span-3 text-sm font-bold text-gray-700 mb-1">Hostel Room Assignment</h3>
+                        <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-4 gap-4 border-t border-gray-100 pt-4 mt-2 bg-gray-50 p-4 rounded-lg">
+                            <h3 className="md:col-span-4 text-sm font-bold text-gray-700 mb-1">Hostel Room Assignment</h3>
                             
                             <div>
                                 <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Building</label>
@@ -326,6 +346,11 @@ const StudentModal: React.FC<StudentModalProps> = ({ student, classes, onClose, 
                                         <option key={i} value={r}>{r}</option>
                                     ))}
                                 </select>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Monthly Fee (₹)</label>
+                                <input type="number" value={hostelFee} onChange={(e) => setHostelFee(Number(e.target.value))} className="input-field text-sm" disabled={!formData.room_no}/>
                             </div>
                         </div>
                     )}
