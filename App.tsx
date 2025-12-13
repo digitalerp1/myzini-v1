@@ -25,6 +25,7 @@ import GeneratorTools from './pages/GeneratorTools';
 import StaffAttendance from './pages/StaffAttendance';
 import StaffAttendanceReport from './pages/StaffAttendanceReport';
 import Transport from './pages/Transport';
+import Hostel from './pages/Hostel';
 import EmailConfirmationPage from './pages/EmailConfirmationPage';
 import HowToUse from './pages/HowToUse';
 import UpdatePassword from './pages/UpdatePassword';
@@ -122,6 +123,7 @@ const App: React.FC = () => {
         <Route path="/staff-attendance-report" element={<StaffAttendanceReport />} />
         <Route path="/results" element={<Results />} />
         <Route path="/transport" element={<Transport />} />
+        <Route path="/hostel" element={<Hostel />} />
         <Route path="/query-helper" element={<QueryHelper />} />
         <Route path="/data-export" element={<DataExport />} />
         <Route path="/generator-tools" element={<GeneratorTools />} />

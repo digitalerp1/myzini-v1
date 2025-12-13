@@ -26,6 +26,26 @@ export interface HostelFloor {
   rooms: string[]; // Array of room numbers/names
 }
 
+export interface HostelFeeRecord {
+    month: string;
+    amount: number;
+    status: 'Paid' | 'Due';
+    paid_date?: string;
+}
+
+export interface StudentHostelData {
+    is_active: boolean;
+    building_id: string;
+    building_name: string;
+    floor_id: string;
+    floor_name: string;
+    room_no: string;
+    joining_date: string;
+    exit_date?: string;
+    monthly_fee: number;
+    fee_records: HostelFeeRecord[];
+}
+
 export interface Staff {
   id: number;
   uid: string;
@@ -123,10 +143,13 @@ export interface Student {
   december?: string;
   previous_dues?: number;
   
-  // Infrastructure fields (Assigned Room)
+  // Infrastructure fields (Assigned Room) - keeping these for flat access, but main data in hostel_data
   building_name?: string;
   floor_name?: string;
   room_no?: string;
+  
+  // New comprehensive hostel data
+  hostel_data?: StudentHostelData;
 }
 
 export interface Expense {

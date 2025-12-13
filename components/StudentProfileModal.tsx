@@ -1,12 +1,13 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../services/supabase';
-import { Student, Class, OtherFee } from '../types';
+import { Student, Class, OtherFee, StudentHostelData } from '../types';
 import Spinner from './Spinner';
 import UserCircleIcon from './icons/UserCircleIcon';
 import PhoneIcon from './icons/PhoneIcon';
 import AcademicCapIcon from './icons/AcademicCapIcon';
 import TransportIcon from './icons/TransportIcon';
+import HostelIcon from './icons/HostelIcon';
 
 
 interface StudentProfileModalProps {
@@ -51,6 +52,9 @@ const StudentProfileModal: React.FC<StudentProfileModalProps> = ({ student: init
     // New State for Driver and Attendance UI
     const [assignedDriver, setAssignedDriver] = useState<{ name: string; van_number: string } | null>(null);
     const [showAllAttendance, setShowAllAttendance] = useState(false);
+
+    // Active Tab State
+    const [activeTab, setActiveTab] = useState<'info' | 'fees' | 'hostel'>('info');
 
     const currentYear = new Date().getFullYear();
     const currentMonthIndex = new Date().getMonth();
@@ -244,6 +248,12 @@ const StudentProfileModal: React.FC<StudentProfileModalProps> = ({ student: init
         return acc;
     }, { present: 0, absent: 0 });
 
+    // Hostel Calculations
+    const hostelData = student.hostel_data as StudentHostelData | undefined;
+    const hostelTotalPaid = hostelData?.fee_records?.filter(r => r.status === 'Paid').reduce((sum, r) => sum + r.amount, 0) || 0;
+    const hostelTotalDues = hostelData?.fee_records?.filter(r => r.status === 'Due').reduce((sum, r) => sum + r.amount, 0) || 0;
+
+
     const renderFeeStatus = (month: keyof Student) => {
         const status = student[month];
         const paidAmountRaw = parsePaidAmount(String(status));
@@ -375,10 +385,21 @@ const StudentProfileModal: React.FC<StudentProfileModalProps> = ({ student: init
                     <h2 className="text-3xl font-bold text-gray-800">Student Profile</h2>
                     <button onClick={onClose} className="text-gray-500 hover:text-gray-800 text-4xl leading-none">&times;</button>
                 </div>
+                
+                {/* Tabs */}
+                <div className="flex space-x-1 bg-gray-200 p-1 rounded-lg mb-4 w-fit">
+                    <button onClick={() => setActiveTab('info')} className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'info' ? 'bg-white text-primary shadow' : 'text-gray-600 hover:bg-gray-300'}`}>Profile Info</button>
+                    <button onClick={() => setActiveTab('fees')} className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'fees' ? 'bg-white text-primary shadow' : 'text-gray-600 hover:bg-gray-300'}`}>Academic Fees</button>
+                    <button onClick={() => setActiveTab('hostel')} className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'hostel' ? 'bg-white text-primary shadow' : 'text-gray-600 hover:bg-gray-300'}`}>Hostel Details</button>
+                </div>
+
                 {error && <div className="p-3 mb-4 text-sm bg-red-100 text-red-700 rounded-md flex-shrink-0">{error}</div>}
-                <div className="overflow-y-auto pr-4 -mr-4">
+                
+                <div className="overflow-y-auto pr-4 -mr-4 flex-1">
+                    
+                    {/* General Profile Section - Always Visible on Left for large screens */}
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                        {/* Left Column: Profile & Info */}
+                        
                         <div className="lg:col-span-1 space-y-6">
                             <div className="bg-white p-6 rounded-xl shadow-md text-center">
                                 <img src={student.photo_url || `https://ui-avatars.com/api/?name=${student.name}&background=4f46e5&color=fff&size=128`} alt={student.name} className="w-32 h-32 rounded-full object-cover mx-auto border-4 border-primary-dark shadow-lg"/>
@@ -386,138 +407,235 @@ const StudentProfileModal: React.FC<StudentProfileModalProps> = ({ student: init
                                 <p className="text-md text-gray-600">Class: {student.class || 'N/A'}</p>
                                 <p className="text-sm text-gray-500 font-mono">Roll No: {student.roll_number || 'N/A'}</p>
                             </div>
-                            <div className="bg-white p-6 rounded-xl shadow-md space-y-4">
-                                <h4 className="info-header"><UserCircleIcon /> Personal Information</h4>
-                                <InfoItem label="Father's Name" value={student.father_name} />
-                                <InfoItem label="Mother's Name" value={student.mother_name} />
-                                <InfoItem label="Date of Birth" value={student.date_of_birth ? new Date(student.date_of_birth).toLocaleDateString() : '-'} />
-                                <InfoItem label="Gender" value={student.gender} />
-                                <InfoItem label="Blood Group" value={student.blood_group} />
-                            </div>
-                             <div className="bg-white p-6 rounded-xl shadow-md space-y-4">
-                                <h4 className="info-header"><PhoneIcon /> Contact Details</h4>
-                                <InfoItem label="Mobile" value={student.mobile} />
-                                <InfoItem label="Gmail" value={student.gmail} />
-                                <InfoItem label="Address" value={student.address} fullWidth/>
-                            </div>
-                             <div className="bg-white p-6 rounded-xl shadow-md space-y-4">
-                                <h4 className="info-header"><AcademicCapIcon /> Academic Information</h4>
-                                <InfoItem label="Registration Date" value={new Date(student.registration_date).toLocaleDateString()} />
-                                <InfoItem label="Aadhar" value={student.aadhar} />
-                                <InfoItem label="Previous School" value={student.previous_school_name} />
-                                {assignedDriver && (
-                                    <>
-                                        <div className="pt-2 border-t border-gray-100"></div>
-                                        <div className="flex items-center gap-2 text-primary font-semibold">
-                                            <TransportIcon className="w-4 h-4"/> Transport Details
-                                        </div>
-                                        <InfoItem label="Driver Name" value={assignedDriver.name} />
-                                        <InfoItem label="Van Number" value={assignedDriver.van_number} />
-                                    </>
-                                )}
-                            </div>
+                            
+                            {activeTab === 'info' && (
+                                <>
+                                    <div className="bg-white p-6 rounded-xl shadow-md space-y-4">
+                                        <h4 className="info-header"><UserCircleIcon /> Personal Information</h4>
+                                        <InfoItem label="Father's Name" value={student.father_name} />
+                                        <InfoItem label="Mother's Name" value={student.mother_name} />
+                                        <InfoItem label="Date of Birth" value={student.date_of_birth ? new Date(student.date_of_birth).toLocaleDateString() : '-'} />
+                                        <InfoItem label="Gender" value={student.gender} />
+                                        <InfoItem label="Blood Group" value={student.blood_group} />
+                                    </div>
+                                    <div className="bg-white p-6 rounded-xl shadow-md space-y-4">
+                                        <h4 className="info-header"><PhoneIcon /> Contact Details</h4>
+                                        <InfoItem label="Mobile" value={student.mobile} />
+                                        <InfoItem label="Gmail" value={student.gmail} />
+                                        <InfoItem label="Address" value={student.address} fullWidth/>
+                                    </div>
+                                    <div className="bg-white p-6 rounded-xl shadow-md space-y-4">
+                                        <h4 className="info-header"><AcademicCapIcon /> Academic Information</h4>
+                                        <InfoItem label="Registration Date" value={new Date(student.registration_date).toLocaleDateString()} />
+                                        <InfoItem label="Aadhar" value={student.aadhar} />
+                                        <InfoItem label="Previous School" value={student.previous_school_name} />
+                                        {assignedDriver && (
+                                            <>
+                                                <div className="pt-2 border-t border-gray-100"></div>
+                                                <div className="flex items-center gap-2 text-primary font-semibold">
+                                                    <TransportIcon className="w-4 h-4"/> Transport Details
+                                                </div>
+                                                <InfoItem label="Driver Name" value={assignedDriver.name} />
+                                                <InfoItem label="Van Number" value={assignedDriver.van_number} />
+                                            </>
+                                        )}
+                                    </div>
+                                </>
+                            )}
                         </div>
 
-                        {/* Right Column: Fees & Attendance */}
+                        {/* Right Content Area changes based on Tab */}
                         <div className="lg:col-span-2 space-y-6">
-                            <div className="bg-white p-6 rounded-xl shadow-md">
-                                <h4 className="text-xl font-bold text-gray-800 mb-4">Fee Records</h4>
-                                <div className="grid grid-cols-2 gap-4 mb-4">
-                                    <FeeStatCard label="Monthly Fee" value={`₹${feeAmount.toLocaleString()}`} color="blue" />
-                                    <FeeStatCard label="Previous Dues" value={`₹${(student.previous_dues || 0).toLocaleString()}`} color="orange" />
-                                    <FeeStatCard label="Total Paid" value={`₹${finalTotalPaid.toLocaleString()}`} color="green" />
-                                    <FeeStatCard label="Total Dues" value={`₹${finalTotalDues.toLocaleString()}`} color="red" />
-                                </div>
-                                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                                    {months.map(month => (
-                                        <div key={month} className="flex justify-between items-center bg-gray-50 p-2.5 rounded-lg">
-                                            <span className="font-medium text-sm capitalize">{month}</span>
-                                            {renderFeeStatus(month)}
+                            
+                            {activeTab === 'info' && (
+                                <div className="bg-white p-6 rounded-xl shadow-md">
+                                    <div className="flex justify-between items-center mb-4">
+                                        <h4 className="text-xl font-bold text-gray-800">Attendance ({currentYear})</h4>
+                                        <button 
+                                            onClick={() => setShowAllAttendance(!showAllAttendance)}
+                                            className="text-sm text-primary hover:text-primary-dark underline"
+                                        >
+                                            {showAllAttendance ? 'Hide History' : 'Show More Attendance Records'}
+                                        </button>
+                                    </div>
+                                    
+                                    <div className="flex flex-wrap items-center gap-4 text-xs mb-4 text-gray-600 bg-gray-50 p-2 rounded-lg">
+                                        <span className="flex items-center gap-1.5"><span className="w-3 h-3 bg-green-500 rounded-sm"></span>Present ({attendanceSummary.present})</span>
+                                        <span className="flex items-center gap-1.5"><span className="w-3 h-3 bg-red-500 rounded-sm"></span>Absent ({attendanceSummary.absent})</span>
+                                        <span className="flex items-center gap-1.5"><span className="w-3 h-3 bg-yellow-100 text-yellow-800 border border-yellow-200 rounded-sm"></span>Holiday</span>
+                                    </div>
+
+                                    {loadingAttendance ? <div className="flex justify-center items-center h-48"><Spinner size="10"/></div> :
+                                    !student.roll_number ? <p className="text-center text-gray-500 py-10">Student has no roll number assigned. Cannot display attendance.</p> :
+                                    (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 transition-all duration-300">
+                                            {(showAllAttendance ? monthNames : [monthNames[currentMonthIndex]]).map((name, i) => {
+                                                const monthIdx = showAllAttendance ? i : currentMonthIndex;
+                                                return (
+                                                    <div key={name} className="border border-gray-100 rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow">
+                                                        <h5 className="font-bold text-center mb-2 text-gray-700 border-b border-gray-100 pb-1">{name}</h5>
+                                                        <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-semibold text-gray-400 mb-1">
+                                                            <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
+                                                        </div>
+                                                        <div className="grid grid-cols-7 gap-1">
+                                                            {generateCalendarDays(currentYear, monthIdx)}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
                                         </div>
-                                    ))}
-                                </div>
-                            </div>
-                             <div className="bg-white p-6 rounded-xl shadow-md">
-                                <h4 className="info-header">Other Fees</h4>
-                                <div className="h-40 overflow-y-auto border border-gray-200 rounded-md">
-                                    {(student.other_fees && student.other_fees.length > 0) ? (
-                                        <table className="min-w-full text-sm">
-                                            <thead className="bg-gray-50 sticky top-0">
-                                                <tr>
-                                                    <th className="p-2 text-left font-medium text-gray-500">Fee Name</th>
-                                                    <th className="p-2 text-right font-medium text-gray-500">Amount</th>
-                                                    <th className="p-2 text-center font-medium text-gray-500">Status</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-gray-200">
-                                                {student.other_fees.map((fee, index) => {
-                                                    const key = `${fee.fees_name}-${fee.dues_date}`;
-                                                    return (
-                                                        <tr key={index}>
-                                                            <td className="p-2">{fee.fees_name}</td>
-                                                            <td className="p-2 text-right">₹{fee.amount.toLocaleString()}</td>
-                                                            <td className="p-2 text-center">
-                                                                {fee.paid_date ? (
-                                                                    <span className="fee-badge bg-green-100 text-green-800">Paid</span>
-                                                                ) : (
-                                                                    <button onClick={() => handlePayOtherFee(fee)} disabled={updatingOtherFee === key} className="px-2 py-0.5 text-xs text-white bg-blue-600 rounded hover:bg-blue-700 disabled:bg-gray-400">
-                                                                        {updatingOtherFee === key ? <Spinner size="3" /> : 'Pay'}
-                                                                    </button>
-                                                                )}
-                                                            </td>
-                                                        </tr>
-                                                    );
-                                                })}
-                                            </tbody>
-                                        </table>
-                                    ) : (
-                                        <p className="text-center text-gray-500 p-4">No other fees found.</p>
                                     )}
                                 </div>
-                            </div>
-                            
-                            <div className="bg-white p-6 rounded-xl shadow-md">
-                                <div className="flex justify-between items-center mb-4">
-                                    <h4 className="text-xl font-bold text-gray-800">Attendance ({currentYear})</h4>
-                                    <button 
-                                        onClick={() => setShowAllAttendance(!showAllAttendance)}
-                                        className="text-sm text-primary hover:text-primary-dark underline"
-                                    >
-                                        {showAllAttendance ? 'Hide History' : 'Show More Attendance Records'}
-                                    </button>
-                                </div>
-                                
-                                <div className="flex flex-wrap items-center gap-4 text-xs mb-4 text-gray-600 bg-gray-50 p-2 rounded-lg">
-                                    <span className="flex items-center gap-1.5"><span className="w-3 h-3 bg-green-500 rounded-sm"></span>Present ({attendanceSummary.present})</span>
-                                    <span className="flex items-center gap-1.5"><span className="w-3 h-3 bg-red-500 rounded-sm"></span>Absent ({attendanceSummary.absent})</span>
-                                    <span className="flex items-center gap-1.5"><span className="w-3 h-3 bg-yellow-100 text-yellow-800 border border-yellow-200 rounded-sm"></span>Holiday</span>
-                                </div>
+                            )}
 
-                                {loadingAttendance ? <div className="flex justify-center items-center h-48"><Spinner size="10"/></div> :
-                                 !student.roll_number ? <p className="text-center text-gray-500 py-10">Student has no roll number assigned. Cannot display attendance.</p> :
-                                (
-                                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 transition-all duration-300">
-                                        {(showAllAttendance ? monthNames : [monthNames[currentMonthIndex]]).map((name, i) => {
-                                            // Handle correct month index mapping. 
-                                            // If showing all, index is 'i'. 
-                                            // If showing only current, we need the actual index of that month.
-                                            const monthIdx = showAllAttendance ? i : currentMonthIndex;
-                                            
-                                            return (
-                                                <div key={name} className="border border-gray-100 rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow">
-                                                    <h5 className="font-bold text-center mb-2 text-gray-700 border-b border-gray-100 pb-1">{name}</h5>
-                                                    <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-semibold text-gray-400 mb-1">
-                                                        <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
-                                                    </div>
-                                                    <div className="grid grid-cols-7 gap-1">
-                                                        {generateCalendarDays(currentYear, monthIdx)}
+                            {activeTab === 'fees' && (
+                                <>
+                                    <div className="bg-white p-6 rounded-xl shadow-md">
+                                        <h4 className="text-xl font-bold text-gray-800 mb-4">Fee Records</h4>
+                                        <div className="grid grid-cols-2 gap-4 mb-4">
+                                            <FeeStatCard label="Monthly Fee" value={`₹${feeAmount.toLocaleString()}`} color="blue" />
+                                            <FeeStatCard label="Previous Dues" value={`₹${(student.previous_dues || 0).toLocaleString()}`} color="orange" />
+                                            <FeeStatCard label="Total Paid" value={`₹${finalTotalPaid.toLocaleString()}`} color="green" />
+                                            <FeeStatCard label="Total Dues" value={`₹${finalTotalDues.toLocaleString()}`} color="red" />
+                                        </div>
+                                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                                            {months.map(month => (
+                                                <div key={month} className="flex justify-between items-center bg-gray-50 p-2.5 rounded-lg">
+                                                    <span className="font-medium text-sm capitalize">{month}</span>
+                                                    {renderFeeStatus(month)}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div className="bg-white p-6 rounded-xl shadow-md">
+                                        <h4 className="info-header">Other Fees</h4>
+                                        <div className="h-40 overflow-y-auto border border-gray-200 rounded-md">
+                                            {(student.other_fees && student.other_fees.length > 0) ? (
+                                                <table className="min-w-full text-sm">
+                                                    <thead className="bg-gray-50 sticky top-0">
+                                                        <tr>
+                                                            <th className="p-2 text-left font-medium text-gray-500">Fee Name</th>
+                                                            <th className="p-2 text-right font-medium text-gray-500">Amount</th>
+                                                            <th className="p-2 text-center font-medium text-gray-500">Status</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-gray-200">
+                                                        {student.other_fees.map((fee, index) => {
+                                                            const key = `${fee.fees_name}-${fee.dues_date}`;
+                                                            return (
+                                                                <tr key={index}>
+                                                                    <td className="p-2">{fee.fees_name}</td>
+                                                                    <td className="p-2 text-right">₹{fee.amount.toLocaleString()}</td>
+                                                                    <td className="p-2 text-center">
+                                                                        {fee.paid_date ? (
+                                                                            <span className="fee-badge bg-green-100 text-green-800">Paid</span>
+                                                                        ) : (
+                                                                            <button onClick={() => handlePayOtherFee(fee)} disabled={updatingOtherFee === key} className="px-2 py-0.5 text-xs text-white bg-blue-600 rounded hover:bg-blue-700 disabled:bg-gray-400">
+                                                                                {updatingOtherFee === key ? <Spinner size="3" /> : 'Pay'}
+                                                                            </button>
+                                                                        )}
+                                                                    </td>
+                                                                </tr>
+                                                            );
+                                                        })}
+                                                    </tbody>
+                                                </table>
+                                            ) : (
+                                                <p className="text-center text-gray-500 p-4">No other fees found.</p>
+                                            )}
+                                        </div>
+                                    </div>
+                                </>
+                            )}
+
+                            {activeTab === 'hostel' && (
+                                <div className="space-y-6">
+                                    <div className="bg-white p-6 rounded-xl shadow-md border-t-4 border-indigo-500">
+                                        <h4 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+                                            <HostelIcon className="w-6 h-6 text-indigo-600" />
+                                            Hostel Assignment
+                                        </h4>
+                                        
+                                        {!hostelData || !hostelData.is_active ? (
+                                            <div className="text-center py-10 bg-gray-50 rounded-lg">
+                                                <p className="text-gray-500">This student is not currently assigned to a hostel room.</p>
+                                                {hostelData && hostelData.exit_date && <p className="text-red-500 text-sm mt-2">Exited on: {new Date(hostelData.exit_date).toLocaleDateString()}</p>}
+                                            </div>
+                                        ) : (
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                                <div className="bg-indigo-50 p-4 rounded-lg">
+                                                    <p className="text-xs font-bold text-indigo-500 uppercase tracking-wide">Current Residence</p>
+                                                    <div className="mt-2 space-y-1">
+                                                        <p className="text-lg font-bold text-gray-800">{hostelData.building_name}</p>
+                                                        <p className="text-gray-600">{hostelData.floor_name}, Room <strong>{hostelData.room_no}</strong></p>
                                                     </div>
                                                 </div>
-                                            );
-                                        })}
+                                                <div className="bg-green-50 p-4 rounded-lg">
+                                                    <p className="text-xs font-bold text-green-600 uppercase tracking-wide">Status</p>
+                                                    <div className="mt-2 space-y-1">
+                                                        <span className="inline-block px-3 py-1 bg-green-200 text-green-800 rounded-full text-xs font-bold mb-1">ACTIVE</span>
+                                                        <p className="text-sm text-gray-600">Joined: {new Date(hostelData.joining_date).toLocaleDateString()}</p>
+                                                        <p className="text-sm text-gray-600">Monthly Rent: <strong>₹{hostelData.monthly_fee}</strong></p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
-                                )}
-                            </div>
+
+                                    {hostelData && (
+                                        <div className="bg-white p-6 rounded-xl shadow-md">
+                                            <h4 className="text-lg font-bold text-gray-800 mb-4">Hostel Fee Ledger</h4>
+                                            
+                                            <div className="grid grid-cols-2 gap-4 mb-4">
+                                                <div className="bg-blue-50 p-3 rounded-lg text-center">
+                                                    <p className="text-xs font-bold text-blue-600 uppercase">Total Paid</p>
+                                                    <p className="text-xl font-bold text-blue-900">₹{hostelTotalPaid}</p>
+                                                </div>
+                                                <div className="bg-red-50 p-3 rounded-lg text-center">
+                                                    <p className="text-xs font-bold text-red-600 uppercase">Total Dues</p>
+                                                    <p className="text-xl font-bold text-red-900">₹{hostelTotalDues}</p>
+                                                </div>
+                                            </div>
+
+                                            <div className="overflow-x-auto border border-gray-200 rounded-lg">
+                                                <table className="min-w-full divide-y divide-gray-200 text-sm">
+                                                    <thead className="bg-gray-50">
+                                                        <tr>
+                                                            <th className="px-4 py-2 text-left font-medium text-gray-500">Month</th>
+                                                            <th className="px-4 py-2 text-right font-medium text-gray-500">Amount</th>
+                                                            <th className="px-4 py-2 text-center font-medium text-gray-500">Status</th>
+                                                            <th className="px-4 py-2 text-right font-medium text-gray-500">Paid Date</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="bg-white divide-y divide-gray-200">
+                                                        {hostelData.fee_records && hostelData.fee_records.length > 0 ? (
+                                                            hostelData.fee_records.map((rec, idx) => (
+                                                                <tr key={idx}>
+                                                                    <td className="px-4 py-2 font-medium">{rec.month}</td>
+                                                                    <td className="px-4 py-2 text-right">₹{rec.amount}</td>
+                                                                    <td className="px-4 py-2 text-center">
+                                                                        <span className={`px-2 py-0.5 rounded text-xs font-bold ${rec.status === 'Paid' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                                                                            {rec.status}
+                                                                        </span>
+                                                                    </td>
+                                                                    <td className="px-4 py-2 text-right text-gray-500">
+                                                                        {rec.paid_date ? new Date(rec.paid_date).toLocaleDateString() : '-'}
+                                                                    </td>
+                                                                </tr>
+                                                            ))
+                                                        ) : (
+                                                            <tr>
+                                                                <td colSpan={4} className="px-4 py-4 text-center text-gray-500">No fee records found.</td>
+                                                            </tr>
+                                                        )}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
                         </div>
                     </div>
                 </div>
