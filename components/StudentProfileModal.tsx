@@ -551,31 +551,37 @@ const StudentProfileModal: React.FC<StudentProfileModalProps> = ({ student: init
                             {activeTab === 'hostel' && (
                                 <div className="space-y-6">
                                     <div className="bg-white p-6 rounded-xl shadow-md border-t-4 border-indigo-500">
-                                        <h4 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
-                                            <HostelIcon className="w-6 h-6 text-indigo-600" />
-                                            Hostel Assignment
-                                        </h4>
+                                        <div className="flex justify-between items-center mb-4">
+                                            <h4 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                                                <HostelIcon className="w-6 h-6 text-indigo-600" />
+                                                Hostel Details
+                                            </h4>
+                                            {hostelData && (
+                                                <span className={`px-3 py-1 rounded-full text-xs font-bold ${hostelData.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                                                    {hostelData.is_active ? 'ACTIVE RESIDENT' : 'EXITED'}
+                                                </span>
+                                            )}
+                                        </div>
                                         
-                                        {!hostelData || !hostelData.is_active ? (
+                                        {!hostelData ? (
                                             <div className="text-center py-10 bg-gray-50 rounded-lg">
-                                                <p className="text-gray-500">This student is not currently assigned to a hostel room.</p>
-                                                {hostelData && hostelData.exit_date && <p className="text-red-500 text-sm mt-2">Exited on: {new Date(hostelData.exit_date).toLocaleDateString()}</p>}
+                                                <p className="text-gray-500">This student has not been assigned to a hostel room.</p>
                                             </div>
                                         ) : (
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                                <div className="bg-indigo-50 p-4 rounded-lg">
-                                                    <p className="text-xs font-bold text-indigo-500 uppercase tracking-wide">Current Residence</p>
+                                                <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-100">
+                                                    <p className="text-xs font-bold text-indigo-500 uppercase tracking-wide">Location</p>
                                                     <div className="mt-2 space-y-1">
                                                         <p className="text-lg font-bold text-gray-800">{hostelData.building_name}</p>
                                                         <p className="text-gray-600">{hostelData.floor_name}, Room <strong>{hostelData.room_no}</strong></p>
                                                     </div>
                                                 </div>
-                                                <div className="bg-green-50 p-4 rounded-lg">
-                                                    <p className="text-xs font-bold text-green-600 uppercase tracking-wide">Status</p>
+                                                <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                                                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Timeline</p>
                                                     <div className="mt-2 space-y-1">
-                                                        <span className="inline-block px-3 py-1 bg-green-200 text-green-800 rounded-full text-xs font-bold mb-1">ACTIVE</span>
-                                                        <p className="text-sm text-gray-600">Joined: {new Date(hostelData.joining_date).toLocaleDateString()}</p>
-                                                        <p className="text-sm text-gray-600">Monthly Rent: <strong>₹{hostelData.monthly_fee}</strong></p>
+                                                        <p className="text-sm text-gray-700">Joined: <strong>{new Date(hostelData.joining_date).toLocaleDateString()}</strong></p>
+                                                        {hostelData.exit_date && <p className="text-sm text-red-600">Exited: <strong>{new Date(hostelData.exit_date).toLocaleDateString()}</strong></p>}
+                                                        <p className="text-sm text-gray-700">Monthly Rent: <strong>₹{hostelData.monthly_fee}</strong></p>
                                                     </div>
                                                 </div>
                                             </div>
@@ -587,24 +593,24 @@ const StudentProfileModal: React.FC<StudentProfileModalProps> = ({ student: init
                                             <h4 className="text-lg font-bold text-gray-800 mb-4">Hostel Fee Ledger</h4>
                                             
                                             <div className="grid grid-cols-2 gap-4 mb-4">
-                                                <div className="bg-blue-50 p-3 rounded-lg text-center">
-                                                    <p className="text-xs font-bold text-blue-600 uppercase">Total Paid</p>
-                                                    <p className="text-xl font-bold text-blue-900">₹{hostelTotalPaid}</p>
+                                                <div className="bg-green-50 p-3 rounded-lg text-center border border-green-100">
+                                                    <p className="text-xs font-bold text-green-600 uppercase">Total Paid</p>
+                                                    <p className="text-xl font-bold text-green-900">₹{hostelTotalPaid.toLocaleString()}</p>
                                                 </div>
-                                                <div className="bg-red-50 p-3 rounded-lg text-center">
-                                                    <p className="text-xs font-bold text-red-600 uppercase">Total Dues</p>
-                                                    <p className="text-xl font-bold text-red-900">₹{hostelTotalDues}</p>
+                                                <div className="bg-red-50 p-3 rounded-lg text-center border border-red-100">
+                                                    <p className="text-xs font-bold text-red-600 uppercase">Total Due</p>
+                                                    <p className="text-xl font-bold text-red-900">₹{hostelTotalDues.toLocaleString()}</p>
                                                 </div>
                                             </div>
 
-                                            <div className="overflow-x-auto border border-gray-200 rounded-lg">
+                                            <div className="overflow-x-auto border border-gray-200 rounded-lg max-h-60 overflow-y-auto">
                                                 <table className="min-w-full divide-y divide-gray-200 text-sm">
-                                                    <thead className="bg-gray-50">
+                                                    <thead className="bg-gray-50 sticky top-0">
                                                         <tr>
-                                                            <th className="px-4 py-2 text-left font-medium text-gray-500">Month</th>
+                                                            <th className="px-4 py-2 text-left font-medium text-gray-500">Month/Desc</th>
                                                             <th className="px-4 py-2 text-right font-medium text-gray-500">Amount</th>
                                                             <th className="px-4 py-2 text-center font-medium text-gray-500">Status</th>
-                                                            <th className="px-4 py-2 text-right font-medium text-gray-500">Paid Date</th>
+                                                            <th className="px-4 py-2 text-right font-medium text-gray-500">Date</th>
                                                         </tr>
                                                     </thead>
                                                     <tbody className="bg-white divide-y divide-gray-200">

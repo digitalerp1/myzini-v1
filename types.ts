@@ -27,10 +27,12 @@ export interface HostelFloor {
 }
 
 export interface HostelFeeRecord {
+    id: string; // Unique ID for the transaction
     month: string;
     amount: number;
-    status: 'Paid' | 'Due';
+    status: 'Paid' | 'Due' | 'Partial';
     paid_date?: string;
+    description?: string; // Notes like "Late fine" or "Advance"
 }
 
 export interface StudentHostelData {
@@ -143,7 +145,7 @@ export interface Student {
   december?: string;
   previous_dues?: number;
   
-  // Infrastructure fields (Assigned Room) - keeping these for flat access, but main data in hostel_data
+  // Infrastructure fields (Assigned Room)
   building_name?: string;
   floor_name?: string;
   room_no?: string;
