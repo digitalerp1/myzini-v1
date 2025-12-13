@@ -9,6 +9,11 @@ export interface OwnerProfile {
   address?: string;
   website?: string;
   school_code?: string;
+  // Infrastructure fields updated to string to support complex format "Name=Floors@Rooms"
+  building_number?: string; 
+  room_numbers?: string | number; 
+  floor_numbers?: string | number;
+  owner_name?: string;
 }
 
 export interface Staff {
