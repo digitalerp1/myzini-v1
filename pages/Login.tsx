@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../services/supabase';
 import Spinner from '../components/Spinner';
@@ -77,11 +76,10 @@ const Login: React.FC = () => {
     }, [view]);
 
     const getRedirectUrl = () => {
-        let redirectUrl = window.location.origin;
-        if (!window.location.hostname.includes('localhost') && !window.location.hostname.includes('127.0.0.1')) {
-            redirectUrl = 'https://myzini.digitalerp.shop';
-        }
-        return redirectUrl;
+        // Dynamic redirect URL based on current origin.
+        // This ensures compatibility with both localhost and deployed environments (Vercel, Custom Domain).
+        // IMPORTANT: Ensure this URL (and localhost) is added to Supabase Authentication -> URL Configuration -> Redirect URLs.
+        return window.location.origin;
     };
 
     const handleGoogleLogin = async () => {

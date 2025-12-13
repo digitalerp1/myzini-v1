@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../services/supabase';
 import { Student, HostelBuilding, StudentHostelData, HostelFeeRecord } from '../types';
@@ -349,7 +348,7 @@ const Hostel: React.FC = () => {
                             </div>
                         </div>
                     ))}
-                    {occupancyData.length === 0 && <div className="text-center text-gray-500 py-10 bg-white rounded-xl shadow-sm">No hostel infrastructure defined in profile. Go to Profile > Infrastructure.</div>}
+                    {occupancyData.length === 0 && <div className="text-center text-gray-500 py-10 bg-white rounded-xl shadow-sm">No hostel infrastructure defined in profile. Go to Profile &gt; Infrastructure.</div>}
                 </div>
             )}
 
