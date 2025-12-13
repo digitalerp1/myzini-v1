@@ -26,13 +26,22 @@ export interface HostelFloor {
   rooms: string[]; // Array of room numbers/names
 }
 
+export interface HostelPaymentHistory {
+    date: string;
+    amount: number;
+    mode?: string; // Cash, Online, etc.
+    note?: string;
+}
+
 export interface HostelFeeRecord {
     id: string; // Unique ID for the transaction
     month: string;
-    amount: number;
+    amount: number; // Total amount due
+    paid_amount: number; // Total amount paid so far
     status: 'Paid' | 'Due' | 'Partial';
-    paid_date?: string;
+    paid_date?: string; // Date of last payment or full payment
     description?: string; // Notes like "Late fine" or "Advance"
+    payment_history?: HostelPaymentHistory[]; // Array to track partial payments
 }
 
 export interface StudentHostelData {

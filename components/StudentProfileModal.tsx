@@ -53,12 +53,15 @@ const StudentProfileModal: React.FC<StudentProfileModalProps> = ({ student: init
     const [assignedDriver, setAssignedDriver] = useState<{ name: string; van_number: string } | null>(null);
     const [showAllAttendance, setShowAllAttendance] = useState(false);
 
-    // Hostel Payment States
-    const [hostelPayAmount, setHostelPayAmount] = useState<string>('');
-    const [hostelPayDesc, setHostelPayDesc] = useState<string>('Hostel Fee Payment');
+    // Hostel Payment Logic
+    const [paymentModalData, setPaymentModalData] = useState<{ recordId: string, total: number, alreadyPaid: number } | null>(null);
+    const [hostelPaymentAmount, setHostelPaymentAmount] = useState<string>('');
+    const [hostelPaymentProcessing, setHostelPaymentProcessing] = useState(false);
+
+    // Manual Due (Hostel)
     const [hostelDueAmount, setHostelDueAmount] = useState<string>('');
-    const [hostelDueDesc, setHostelDueDesc] = useState<string>('Monthly Rent');
-    const [isHostelProcessing, setIsHostelProcessing] = useState(false);
+    const [hostelDueDesc, setHostelDueDesc] = useState<string>('');
+    const [hostelDueProcessing, setHostelDueProcessing] = useState(false);
 
     // Active Tab State
     const [activeTab, setActiveTab] = useState<'info' | 'fees' | 'hostel'>('info');
@@ -161,55 +164,86 @@ const StudentProfileModal: React.FC<StudentProfileModalProps> = ({ student: init
     }, [fetchAttendanceData]);
 
     // --- Hostel Logic ---
-    const handleAddHostelRecord = async (type: 'Paid' | 'Due') => {
-        const amount = type === 'Paid' ? parseFloat(hostelPayAmount) : parseFloat(hostelDueAmount);
-        const desc = type === 'Paid' ? hostelPayDesc : hostelDueDesc;
-
-        if (isNaN(amount) || amount <= 0) {
-            setError("Please enter a valid amount.");
-            return;
-        }
-
-        setIsHostelProcessing(true);
+    const handleAddManualHostelDue = async () => {
+        if (!hostelDueAmount || !hostelDueDesc) return;
+        setHostelDueProcessing(true);
         
         const newRecord: HostelFeeRecord = {
             id: crypto.randomUUID(),
-            month: desc, // We use month field for description in this flexible ledger
-            amount: amount,
-            status: type,
-            paid_date: type === 'Paid' ? new Date().toISOString() : undefined,
-            description: desc
+            month: hostelDueDesc,
+            amount: parseFloat(hostelDueAmount),
+            paid_amount: 0,
+            status: 'Due',
+            description: hostelDueDesc,
+            payment_history: []
         };
 
         const existingRecords = student.hostel_data?.fee_records || [];
         const updatedRecords = [...existingRecords, newRecord];
         
-        // Ensure structure is maintained
         const updatedHostelData = { 
             ...(student.hostel_data || { 
-                is_active: true, 
-                building_id: '', building_name: 'Unknown', 
-                floor_id: '', floor_name: '', 
-                room_no: '', joining_date: new Date().toISOString(), monthly_fee: 0 
+                is_active: true, building_id: '', building_name: '', floor_id: '', floor_name: '', room_no: '', joining_date: new Date().toISOString(), monthly_fee: 0 
             }),
             fee_records: updatedRecords 
         };
 
-        const { error: updateError } = await supabase
-            .from('students')
-            .update({ hostel_data: updatedHostelData })
-            .eq('id', student.id);
-
-        if (updateError) {
-            setError(updateError.message);
-        } else {
-            // Reset inputs
-            setHostelPayAmount('');
+        const { error } = await supabase.from('students').update({ hostel_data: updatedHostelData }).eq('id', student.id);
+        if(error) setError(error.message);
+        else {
             setHostelDueAmount('');
-            if(type === 'Due') setHostelDueDesc('Monthly Rent');
+            setHostelDueDesc('');
         }
-        setIsHostelProcessing(false);
-    };
+        setHostelDueProcessing(false);
+    }
+
+    const openHostelPaymentModal = (record: HostelFeeRecord) => {
+        setPaymentModalData({
+            recordId: record.id,
+            total: record.amount,
+            alreadyPaid: record.paid_amount || 0
+        });
+        setHostelPaymentAmount((record.amount - (record.paid_amount || 0)).toString()); // Default to remaining amount
+    }
+
+    const submitHostelPayment = async () => {
+        if (!paymentModalData || !student.hostel_data) return;
+        const amountToPay = parseFloat(hostelPaymentAmount);
+        if (isNaN(amountToPay) || amountToPay <= 0) {
+            alert("Invalid amount");
+            return;
+        }
+
+        setHostelPaymentProcessing(true);
+        const records = [...(student.hostel_data.fee_records || [])];
+        const recordIndex = records.findIndex(r => r.id === paymentModalData.recordId);
+
+        if (recordIndex >= 0) {
+            const record = records[recordIndex];
+            const newPaidTotal = (record.paid_amount || 0) + amountToPay;
+            
+            // Update history
+            const newHistory = [...(record.payment_history || []), {
+                date: new Date().toISOString(),
+                amount: amountToPay
+            }];
+
+            records[recordIndex] = {
+                ...record,
+                paid_amount: newPaidTotal,
+                status: newPaidTotal >= record.amount ? 'Paid' : 'Partial',
+                paid_date: newPaidTotal >= record.amount ? new Date().toISOString() : undefined,
+                payment_history: newHistory
+            };
+
+            const updatedHostelData = { ...student.hostel_data, fee_records: records };
+            const { error } = await supabase.from('students').update({ hostel_data: updatedHostelData }).eq('id', student.id);
+            
+            if(error) alert(error.message);
+            else setPaymentModalData(null);
+        }
+        setHostelPaymentProcessing(false);
+    }
 
 
     const handlePayment = async (month: keyof Student, amountToPay: number) => {
@@ -309,9 +343,8 @@ const StudentProfileModal: React.FC<StudentProfileModalProps> = ({ student: init
 
     // Hostel Calculations
     const hostelData = student.hostel_data as StudentHostelData | undefined;
-    const hostelTotalPaid = hostelData?.fee_records?.filter(r => r.status === 'Paid').reduce((sum, r) => sum + r.amount, 0) || 0;
-    const hostelTotalDues = hostelData?.fee_records?.filter(r => r.status === 'Due').reduce((sum, r) => sum + r.amount, 0) || 0;
-    const hostelBalance = hostelTotalDues - hostelTotalPaid;
+    const hostelTotalPaid = hostelData?.fee_records?.reduce((sum, r) => sum + (r.paid_amount || 0), 0) || 0;
+    const hostelTotalDues = hostelData?.fee_records?.reduce((sum, r) => sum + (r.amount - (r.paid_amount || 0)), 0) || 0;
 
 
     const renderFeeStatus = (month: keyof Student) => {
@@ -651,7 +684,24 @@ const StudentProfileModal: React.FC<StudentProfileModalProps> = ({ student: init
                                     {hostelData && (
                                         <>
                                             <div className="bg-white p-6 rounded-xl shadow-md">
-                                                <h4 className="text-lg font-bold text-gray-800 mb-4">Hostel Fee Ledger</h4>
+                                                <div className="flex justify-between items-center mb-4">
+                                                    <h4 className="text-lg font-bold text-gray-800">Hostel Fee Ledger</h4>
+                                                    
+                                                    {/* Manual Due Addition - Simple Popover or Inline */}
+                                                    <div className="flex gap-2 items-center">
+                                                        <input 
+                                                            type="text" placeholder="Desc" className="border p-1 text-xs w-20 rounded"
+                                                            value={hostelDueDesc} onChange={e => setHostelDueDesc(e.target.value)}
+                                                        />
+                                                        <input 
+                                                            type="number" placeholder="Amt" className="border p-1 text-xs w-16 rounded"
+                                                            value={hostelDueAmount} onChange={e => setHostelDueAmount(e.target.value)}
+                                                        />
+                                                        <button onClick={handleAddManualHostelDue} disabled={hostelDueProcessing} className="bg-red-50 text-red-600 text-xs px-2 py-1 rounded border border-red-200 hover:bg-red-100">
+                                                            + Due
+                                                        </button>
+                                                    </div>
+                                                </div>
                                                 
                                                 <div className="grid grid-cols-2 gap-4 mb-4">
                                                     <div className="bg-green-50 p-3 rounded-lg text-center border border-green-100">
@@ -659,92 +709,75 @@ const StudentProfileModal: React.FC<StudentProfileModalProps> = ({ student: init
                                                         <p className="text-xl font-bold text-green-900">₹{hostelTotalPaid.toLocaleString()}</p>
                                                     </div>
                                                     <div className="bg-red-50 p-3 rounded-lg text-center border border-red-100">
-                                                        <p className="text-xs font-bold text-red-600 uppercase">Total Due (Historical)</p>
+                                                        <p className="text-xs font-bold text-red-600 uppercase">Balance Pending</p>
                                                         <p className="text-xl font-bold text-red-900">₹{hostelTotalDues.toLocaleString()}</p>
-                                                    </div>
-                                                    <div className="bg-blue-50 p-3 rounded-lg text-center border border-blue-100 col-span-2">
-                                                        <p className="text-xs font-bold text-blue-600 uppercase">Net Balance Pending</p>
-                                                        <p className="text-xl font-bold text-blue-900">₹{hostelBalance.toLocaleString()}</p>
                                                     </div>
                                                 </div>
 
-                                                <div className="overflow-x-auto border border-gray-200 rounded-lg max-h-60 overflow-y-auto mb-6">
+                                                <div className="overflow-x-auto border border-gray-200 rounded-lg max-h-80 overflow-y-auto">
                                                     <table className="min-w-full divide-y divide-gray-200 text-sm">
                                                         <thead className="bg-gray-50 sticky top-0">
                                                             <tr>
-                                                                <th className="px-4 py-2 text-left font-medium text-gray-500">Description / Month</th>
-                                                                <th className="px-4 py-2 text-right font-medium text-gray-500">Amount</th>
-                                                                <th className="px-4 py-2 text-center font-medium text-gray-500">Type</th>
-                                                                <th className="px-4 py-2 text-right font-medium text-gray-500">Date</th>
+                                                                <th className="px-4 py-2 text-left font-medium text-gray-500">Month / Description</th>
+                                                                <th className="px-4 py-2 text-right font-medium text-gray-500">Total</th>
+                                                                <th className="px-4 py-2 text-right font-medium text-gray-500">Paid</th>
+                                                                <th className="px-4 py-2 text-right font-medium text-gray-500">Balance</th>
+                                                                <th className="px-4 py-2 text-center font-medium text-gray-500">Action</th>
                                                             </tr>
                                                         </thead>
                                                         <tbody className="bg-white divide-y divide-gray-200">
                                                             {hostelData.fee_records && hostelData.fee_records.length > 0 ? (
-                                                                hostelData.fee_records.map((rec, idx) => (
-                                                                    <tr key={idx}>
-                                                                        <td className="px-4 py-2 font-medium">{rec.description || rec.month}</td>
-                                                                        <td className="px-4 py-2 text-right">₹{rec.amount}</td>
-                                                                        <td className="px-4 py-2 text-center">
-                                                                            <span className={`px-2 py-0.5 rounded text-xs font-bold ${rec.status === 'Paid' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                                                                                {rec.status}
-                                                                            </span>
-                                                                        </td>
-                                                                        <td className="px-4 py-2 text-right text-gray-500">
-                                                                            {rec.paid_date ? new Date(rec.paid_date).toLocaleDateString() : '-'}
-                                                                        </td>
-                                                                    </tr>
-                                                                ))
+                                                                hostelData.fee_records.map((rec, idx) => {
+                                                                    const paid = rec.paid_amount || 0;
+                                                                    const balance = rec.amount - paid;
+                                                                    return (
+                                                                        <tr key={idx}>
+                                                                            <td className="px-4 py-3 font-medium text-gray-800">{rec.description || rec.month}</td>
+                                                                            <td className="px-4 py-3 text-right text-gray-600">₹{rec.amount}</td>
+                                                                            <td className="px-4 py-3 text-right text-green-600">₹{paid}</td>
+                                                                            <td className="px-4 py-3 text-right text-red-600 font-bold">₹{balance}</td>
+                                                                            <td className="px-4 py-3 text-center">
+                                                                                {rec.status === 'Paid' ? (
+                                                                                    <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full font-bold">PAID</span>
+                                                                                ) : (
+                                                                                    <div className="relative">
+                                                                                        {paymentModalData?.recordId === rec.id ? (
+                                                                                            <div className="absolute right-0 top-0 mt-8 z-10 bg-white shadow-xl border border-gray-200 p-3 rounded-lg w-48 text-left">
+                                                                                                <p className="text-xs font-bold mb-1 text-gray-700">Pay for {rec.month}</p>
+                                                                                                <input 
+                                                                                                    type="number" 
+                                                                                                    className="border p-1 w-full text-sm mb-2 rounded" 
+                                                                                                    value={hostelPaymentAmount}
+                                                                                                    onChange={e => setHostelPaymentAmount(e.target.value)}
+                                                                                                    max={balance}
+                                                                                                />
+                                                                                                <div className="flex justify-between">
+                                                                                                    <button onClick={() => setPaymentModalData(null)} className="text-xs text-gray-500">Cancel</button>
+                                                                                                    <button onClick={submitHostelPayment} disabled={hostelPaymentProcessing} className="text-xs bg-green-600 text-white px-2 py-1 rounded">
+                                                                                                        {hostelPaymentProcessing ? '...' : 'Confirm'}
+                                                                                                    </button>
+                                                                                                </div>
+                                                                                            </div>
+                                                                                        ) : null}
+                                                                                        <button 
+                                                                                            onClick={() => openHostelPaymentModal(rec)} 
+                                                                                            className="bg-indigo-600 text-white px-3 py-1 rounded text-xs hover:bg-indigo-700 shadow-sm"
+                                                                                        >
+                                                                                            Pay
+                                                                                        </button>
+                                                                                    </div>
+                                                                                )}
+                                                                            </td>
+                                                                        </tr>
+                                                                    );
+                                                                })
                                                             ) : (
                                                                 <tr>
-                                                                    <td colSpan={4} className="px-4 py-4 text-center text-gray-500">No fee records found.</td>
+                                                                    <td colSpan={5} className="px-4 py-4 text-center text-gray-500">No fee records found.</td>
                                                                 </tr>
                                                             )}
                                                         </tbody>
                                                     </table>
-                                                </div>
-
-                                                {/* Manual Payment Section */}
-                                                <div className="border-t pt-4 grid grid-cols-1 md:grid-cols-2 gap-6">
-                                                    <div>
-                                                        <h5 className="font-bold text-gray-700 mb-2">Record Payment</h5>
-                                                        <div className="flex flex-col gap-2">
-                                                            <input 
-                                                                type="text" placeholder="Description (e.g. Partial Payment)" 
-                                                                value={hostelPayDesc} onChange={e => setHostelPayDesc(e.target.value)}
-                                                                className="border p-2 rounded text-sm w-full"
-                                                            />
-                                                            <div className="flex gap-2">
-                                                                <input 
-                                                                    type="number" placeholder="Amount" 
-                                                                    value={hostelPayAmount} onChange={e => setHostelPayAmount(e.target.value)}
-                                                                    className="border p-2 rounded text-sm flex-1"
-                                                                />
-                                                                <button onClick={() => handleAddHostelRecord('Paid')} disabled={isHostelProcessing} className="bg-green-600 text-white px-4 py-2 rounded text-sm font-bold hover:bg-green-700 disabled:opacity-50">
-                                                                    Pay
-                                                                </button>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                    <div>
-                                                        <h5 className="font-bold text-gray-700 mb-2">Add Due / Charge</h5>
-                                                        <div className="flex flex-col gap-2">
-                                                            <input 
-                                                                type="text" placeholder="Description (e.g. Damage Fine)" 
-                                                                value={hostelDueDesc} onChange={e => setHostelDueDesc(e.target.value)}
-                                                                className="border p-2 rounded text-sm w-full"
-                                                            />
-                                                            <div className="flex gap-2">
-                                                                <input 
-                                                                    type="number" placeholder="Amount" 
-                                                                    value={hostelDueAmount} onChange={e => setHostelDueAmount(e.target.value)}
-                                                                    className="border p-2 rounded text-sm flex-1"
-                                                                />
-                                                                <button onClick={() => handleAddHostelRecord('Due')} disabled={isHostelProcessing} className="bg-red-600 text-white px-4 py-2 rounded text-sm font-bold hover:bg-red-700 disabled:opacity-50">
-                                                                    Add Due
-                                                                </button>
-                                                            </div>
-                                                        </div>
-                                                    </div>
                                                 </div>
                                             </div>
                                         </>

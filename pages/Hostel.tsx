@@ -104,8 +104,9 @@ const Hostel: React.FC = () => {
             if(s.hostel_data && s.hostel_data.is_active) {
                 occupantsCount++;
                 s.hostel_data.fee_records?.forEach(rec => {
-                    if(rec.status === 'Paid') revenue += rec.amount;
-                    else dues += rec.amount;
+                    // Modern calculation based on paid_amount vs amount
+                    if (rec.paid_amount) revenue += rec.paid_amount;
+                    dues += (rec.amount - (rec.paid_amount || 0));
                 });
             }
         });
@@ -141,38 +142,59 @@ const Hostel: React.FC = () => {
         if (!window.confirm(`Are you sure you want to add dues for ${bulkMonth} to ALL active hostel students?`)) return;
         
         setProcessing(true);
+        const { data: { user } } = await supabase.auth.getUser();
+        
+        if (!user) {
+            alert("User authentication failed.");
+            setProcessing(false);
+            return;
+        }
+
+        // Only target active hostel students
         const activeStudents = students.filter(s => s.hostel_data?.is_active);
         
-        const updates = activeStudents.map(student => {
+        let successCount = 0;
+        let failCount = 0;
+
+        // We update students one by one (or could do batched updates if supabase RPC was set up) 
+        // to avoid RLS issues with bulk upsert on mixed data.
+        for (const student of activeStudents) {
             const feeAmount = student.hostel_data?.monthly_fee || 0;
             const newRecord: HostelFeeRecord = {
                 id: crypto.randomUUID(),
                 month: bulkMonth,
                 amount: feeAmount,
+                paid_amount: 0,
                 status: 'Due',
-                description: 'Monthly Rent'
+                description: 'Monthly Rent',
+                payment_history: []
             };
             
             const updatedRecords = [...(student.hostel_data?.fee_records || []), newRecord];
             const updatedHostelData = { ...student.hostel_data, fee_records: updatedRecords };
 
-            return {
-                id: student.id,
-                hostel_data: updatedHostelData
-            };
-        });
+            const { error } = await supabase
+                .from('students')
+                .update({ hostel_data: updatedHostelData })
+                .eq('id', student.id)
+                .eq('uid', user.id); // Strict RLS check
 
-        if (updates.length > 0) {
-            const { error } = await supabase.from('students').upsert(updates);
-            if (error) {
-                alert(`Error adding dues: ${error.message}`);
+            if (!error) {
+                successCount++;
             } else {
-                alert(`Successfully added ${bulkMonth} dues to ${updates.length} students.`);
-                setIsBulkDuesOpen(false);
-                fetchData();
+                console.error(`Failed to update student ${student.id}`, error);
+                failCount++;
             }
-        } else {
+        }
+
+        if (successCount > 0) {
+            alert(`Successfully added dues for ${successCount} students.${failCount > 0 ? ` Failed for ${failCount} students.` : ''}`);
+            setIsBulkDuesOpen(false);
+            fetchData();
+        } else if (activeStudents.length === 0) {
             alert("No active hostel students found.");
+        } else {
+            alert("Failed to add dues. Check permissions.");
         }
         setProcessing(false);
     };
@@ -323,8 +345,8 @@ const Hostel: React.FC = () => {
                                 {filteredStudents.map((student) => {
                                     const isHostelite = student.hostel_data?.is_active;
                                     const hostelFeeRecords = student.hostel_data?.fee_records || [];
-                                    const totalPaid = hostelFeeRecords.filter(r => r.status === 'Paid').reduce((sum, r) => sum + r.amount, 0);
-                                    const totalDue = hostelFeeRecords.filter(r => r.status === 'Due').reduce((sum, r) => sum + r.amount, 0);
+                                    const totalPaid = hostelFeeRecords.reduce((sum, r) => sum + (r.paid_amount || 0), 0);
+                                    const totalDue = hostelFeeRecords.reduce((sum, r) => sum + (r.amount - (r.paid_amount || 0)), 0);
 
                                     return (
                                         <tr key={student.id} className="hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => handleViewProfile(student)}>
