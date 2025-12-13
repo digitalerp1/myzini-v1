@@ -95,6 +95,7 @@ const Profile: React.FC<ProfileProps> = ({ user }) => {
 
   // --- Infrastructure Handlers ---
 
+
   const handleAddBuilding = () => {
       setInfrastructure([...infrastructure, { id: Date.now().toString(), name: '', floors: [], rooms: [] }]);
   };
