@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../services/supabase';
 import { User } from '@supabase/supabase-js';
-import { OwnerProfile } from '../types';
+import { OwnerProfile, HostelBuilding } from '../types';
 import Spinner from '../components/Spinner';
 import ImageUpload from '../components/ImageUpload';
 import { sanitizeForPath } from '../utils/textUtils';
@@ -13,24 +13,16 @@ interface ProfileProps {
   user: User;
 }
 
-// Interface for local state management of infrastructure
-interface BuildingData {
-    id: string; // unique ID for React rendering
-    name: string;
-    floors: string[]; // List of floor names
-    rooms: string[];  // List of room names
-}
-
 const Profile: React.FC<ProfileProps> = ({ user }) => {
   const [profile, setProfile] = useState<OwnerProfile | null>(null);
-  const [infrastructure, setInfrastructure] = useState<BuildingData[]>([]);
+  const [hostelData, setHostelData] = useState<HostelBuilding[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
 
-  // Temporary state for inputs
-  const [newFloorInputs, setNewFloorInputs] = useState<{[key: string]: string}>({});
-  const [newRoomInputs, setNewRoomInputs] = useState<{[key: string]: string}>({});
+  // Temporary inputs state
+  const [newFloorInputs, setNewFloorInputs] = useState<{[buildingId: string]: string}>({});
+  const [newRoomInputs, setNewRoomInputs] = useState<{[floorId: string]: string}>({});
 
   const fetchProfile = useCallback(async () => {
     setLoading(true);
@@ -42,28 +34,12 @@ const Profile: React.FC<ProfileProps> = ({ user }) => {
 
     if (data) {
       setProfile(data);
-      
-      // Parse the complex infrastructure string
-      // Format: BuildingName=Floor1,Floor2@Room1,Room2+NextBuilding=...
-      if (data.floor_numbers && typeof data.floor_numbers === 'string') {
-          try {
-              const buildings = data.floor_numbers.split('+').map((part: string, index: number) => {
-                  if (!part.includes('=')) return null;
-                  const [name, rest] = part.split('=');
-                  const [floorsStr, roomsStr] = rest ? rest.split('@') : ['', ''];
-                  
-                  return {
-                      id: Date.now().toString() + index,
-                      name: name || '',
-                      floors: floorsStr ? floorsStr.split(',').filter(Boolean) : [],
-                      rooms: roomsStr ? roomsStr.split(',').filter(Boolean) : []
-                  };
-              }).filter(Boolean) as BuildingData[];
-              setInfrastructure(buildings);
-          } catch (e) {
-              console.error("Error parsing infrastructure string", e);
-              setInfrastructure([]);
-          }
+      // Load hostel management data directly from the JSON column
+      if (data.hostel_managment) {
+          // Ensure it's treated as an array of HostelBuilding
+          setHostelData(data.hostel_managment as HostelBuilding[]);
+      } else {
+          setHostelData([]);
       }
     } else if (error && error.code !== 'PGRST116') { // Ignore "no rows found"
       setMessage({ type: 'error', text: `Error fetching profile: ${error.message}` });
@@ -93,71 +69,87 @@ const Profile: React.FC<ProfileProps> = ({ user }) => {
     }
   };
 
-  // --- Infrastructure Handlers ---
-
+  // --- Hostel Management Logic ---
 
   const handleAddBuilding = () => {
-      setInfrastructure([...infrastructure, { id: Date.now().toString(), name: '', floors: [], rooms: [] }]);
+      const newBuilding: HostelBuilding = {
+          id: crypto.randomUUID(),
+          name: '',
+          floors: []
+      };
+      setHostelData([...hostelData, newBuilding]);
   };
 
-  const handleRemoveBuilding = (id: string) => {
-      setInfrastructure(infrastructure.filter(b => b.id !== id));
+  const handleRemoveBuilding = (buildingId: string) => {
+      if(window.confirm('Delete this building and all its floors/rooms?')) {
+          setHostelData(hostelData.filter(b => b.id !== buildingId));
+      }
   };
 
-  const handleBuildingNameChange = (id: string, value: string) => {
-      setInfrastructure(infrastructure.map(b => b.id === id ? { ...b, name: value } : b));
+  const handleBuildingNameChange = (buildingId: string, name: string) => {
+      setHostelData(hostelData.map(b => b.id === buildingId ? { ...b, name } : b));
   };
 
-  // Floors
   const handleAddFloor = (buildingId: string) => {
-      const val = newFloorInputs[buildingId];
-      if (!val || !val.trim()) return;
+      const floorName = newFloorInputs[buildingId];
+      if (!floorName || !floorName.trim()) return;
 
-      setInfrastructure(infrastructure.map(b => {
+      setHostelData(hostelData.map(b => {
           if (b.id === buildingId) {
-              return { ...b, floors: [...b.floors, val.trim()] };
+              return {
+                  ...b,
+                  floors: [...b.floors, { id: crypto.randomUUID(), name: floorName.trim(), rooms: [] }]
+              };
           }
           return b;
       }));
       setNewFloorInputs({ ...newFloorInputs, [buildingId]: '' });
   };
 
-  const handleRemoveFloor = (buildingId: string, floorIndex: number) => {
-      setInfrastructure(infrastructure.map(b => {
+  const handleRemoveFloor = (buildingId: string, floorId: string) => {
+      setHostelData(hostelData.map(b => {
           if (b.id === buildingId) {
-              const newFloors = [...b.floors];
-              newFloors.splice(floorIndex, 1);
-              return { ...b, floors: newFloors };
+              return { ...b, floors: b.floors.filter(f => f.id !== floorId) };
           }
           return b;
       }));
   };
 
-  // Rooms
-  const handleAddRoom = (buildingId: string) => {
-      const val = newRoomInputs[buildingId];
-      if (!val || !val.trim()) return;
+  const handleAddRoom = (buildingId: string, floorId: string) => {
+      const roomNum = newRoomInputs[floorId];
+      if (!roomNum || !roomNum.trim()) return;
 
-      setInfrastructure(infrastructure.map(b => {
+      setHostelData(hostelData.map(b => {
           if (b.id === buildingId) {
-              return { ...b, rooms: [...b.rooms, val.trim()] };
+              const updatedFloors = b.floors.map(f => {
+                  if (f.id === floorId) {
+                      return { ...f, rooms: [...f.rooms, roomNum.trim()] };
+                  }
+                  return f;
+              });
+              return { ...b, floors: updatedFloors };
           }
           return b;
       }));
-      setNewRoomInputs({ ...newRoomInputs, [buildingId]: '' });
+      setNewRoomInputs({ ...newRoomInputs, [floorId]: '' });
   };
 
-  const handleRemoveRoom = (buildingId: string, roomIndex: number) => {
-      setInfrastructure(infrastructure.map(b => {
+  const handleRemoveRoom = (buildingId: string, floorId: string, roomIndex: number) => {
+      setHostelData(hostelData.map(b => {
           if (b.id === buildingId) {
-              const newRooms = [...b.rooms];
-              newRooms.splice(roomIndex, 1);
-              return { ...b, rooms: newRooms };
+              const updatedFloors = b.floors.map(f => {
+                  if (f.id === floorId) {
+                      const newRooms = [...f.rooms];
+                      newRooms.splice(roomIndex, 1);
+                      return { ...f, rooms: newRooms };
+                  }
+                  return f;
+              });
+              return { ...b, floors: updatedFloors };
           }
           return b;
       }));
   };
-
 
   const getSchoolImagePath = async (fileName: string): Promise<string> => {
     if (!profile?.school_name) {
@@ -176,25 +168,10 @@ const Profile: React.FC<ProfileProps> = ({ user }) => {
     setSaving(true);
     setMessage(null);
 
-    // Serialize Infrastructure Data
-    // 1. building_number column gets comma separated building names
-    const buildingNames = infrastructure.map(b => b.name).filter(n => n.trim() !== '').join(',');
-    
-    // 2. floor_numbers column gets the complex format: Name=Floors@Rooms+...
-    // Floors are joined by commas, Rooms are joined by commas
-    const complexString = infrastructure
-        .filter(b => b.name.trim() !== '')
-        .map(b => {
-            const floorsStr = b.floors.join(',');
-            const roomsStr = b.rooms.join(',');
-            return `${b.name}=${floorsStr}@${roomsStr}`;
-        })
-        .join('+');
-
+    // Save profile data along with the structured hostel_managment JSON
     const dataToSave = {
         ...profile,
-        building_number: buildingNames,
-        floor_numbers: complexString
+        hostel_managment: hostelData
     };
 
     const { error } = await supabase.from('owner').upsert(dataToSave);
@@ -202,7 +179,7 @@ const Profile: React.FC<ProfileProps> = ({ user }) => {
     if (error) {
       setMessage({ type: 'error', text: `Error saving profile: ${error.message}` });
     } else {
-      setMessage({ type: 'success', text: 'Profile saved successfully!' });
+      setMessage({ type: 'success', text: 'Profile and Hostel Infrastructure saved successfully!' });
     }
     setSaving(false);
   };
@@ -228,7 +205,7 @@ const Profile: React.FC<ProfileProps> = ({ user }) => {
   const profileExists = profile && profile.register_date;
 
   return (
-    <div className="bg-white p-8 rounded-xl shadow-lg max-w-4xl mx-auto">
+    <div className="bg-white p-8 rounded-xl shadow-lg max-w-5xl mx-auto">
       <h1 className="text-3xl font-bold text-gray-800 mb-6">{profileExists ? 'Edit Your School Profile' : 'Create Your School Profile'}</h1>
       {message && (
         <div className={`p-4 mb-4 text-sm rounded-md ${message.type === 'error' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
@@ -238,27 +215,27 @@ const Profile: React.FC<ProfileProps> = ({ user }) => {
       <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="md:col-span-2">
             <label htmlFor="school_name" className="block text-sm font-medium text-gray-700">School Name</label>
-            <input type="text" name="school_name" id="school_name" value={profile?.school_name || ''} onChange={handleInputChange} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm"/>
+            <input type="text" name="school_name" id="school_name" value={profile?.school_name || ''} onChange={handleInputChange} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm input-field"/>
         </div>
         <div>
             <label htmlFor="principal_name" className="block text-sm font-medium text-gray-700">Principal Name</label>
-            <input type="text" name="principal_name" id="principal_name" value={profile?.principal_name || ''} onChange={handleInputChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm"/>
+            <input type="text" name="principal_name" id="principal_name" value={profile?.principal_name || ''} onChange={handleInputChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm input-field"/>
         </div>
         <div>
             <label htmlFor="mobile_number" className="block text-sm font-medium text-gray-700">Mobile Number</label>
-            <input type="tel" name="mobile_number" id="mobile_number" value={profile?.mobile_number || ''} onChange={handleInputChange} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm"/>
+            <input type="tel" name="mobile_number" id="mobile_number" value={profile?.mobile_number || ''} onChange={handleInputChange} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm input-field"/>
         </div>
         <div className="md:col-span-2">
             <label htmlFor="address" className="block text-sm font-medium text-gray-700">Address</label>
-            <textarea name="address" id="address" rows={3} value={profile?.address || ''} onChange={handleInputChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm"/>
+            <textarea name="address" id="address" rows={3} value={profile?.address || ''} onChange={handleInputChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm input-field"/>
         </div>
         <div>
             <label htmlFor="website" className="block text-sm font-medium text-gray-700">Website URL</label>
-            <input type="url" name="website" id="website" value={profile?.website || ''} onChange={handleInputChange} placeholder="https://example.com" className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm"/>
+            <input type="url" name="website" id="website" value={profile?.website || ''} onChange={handleInputChange} placeholder="https://example.com" className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm input-field"/>
         </div>
          <div>
             <label htmlFor="school_code" className="block text-sm font-medium text-gray-700">School Code</label>
-            <input type="text" name="school_code" id="school_code" value={profile?.school_code || ''} onChange={handleInputChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm"/>
+            <input type="text" name="school_code" id="school_code" value={profile?.school_code || ''} onChange={handleInputChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm input-field"/>
         </div>
         
         <ImageUpload
@@ -268,102 +245,121 @@ const Profile: React.FC<ProfileProps> = ({ user }) => {
             getUploadPath={getSchoolImagePath}
         />
 
-        {/* Infrastructure Section */}
-        <div className="md:col-span-2 border-t pt-6 mt-4">
+        {/* Hostel Management Section */}
+        <div className="md:col-span-2 border-t border-gray-200 pt-8 mt-4">
             <div className="flex justify-between items-center mb-6">
                 <div>
-                    <h3 className="text-xl font-bold text-gray-800">School Infrastructure</h3>
-                    <p className="text-sm text-gray-500">Manage your buildings, floors, and rooms.</p>
+                    <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                        <svg className="w-6 h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg>
+                        Hostel Infrastructure
+                    </h3>
+                    <p className="text-sm text-gray-500">Define buildings, floors, and rooms for student assignment.</p>
                 </div>
-                <button type="button" onClick={handleAddBuilding} className="flex items-center px-4 py-2 bg-indigo-50 text-indigo-700 rounded-md hover:bg-indigo-100 transition-colors">
-                    <PlusIcon className="w-5 h-5 mr-2"/> Add Building
+                <button type="button" onClick={handleAddBuilding} className="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors shadow-sm text-sm font-medium">
+                    <PlusIcon className="w-4 h-4 mr-2"/> Add Building
                 </button>
             </div>
             
             <div className="space-y-6">
-                {infrastructure.length === 0 && (
-                    <div className="text-center py-10 border-2 border-dashed border-gray-300 rounded-lg bg-gray-50">
-                        <p className="text-gray-500">No buildings added yet.</p>
-                        <button type="button" onClick={handleAddBuilding} className="mt-2 text-primary hover:underline font-medium">Add your first building</button>
+                {hostelData.length === 0 && (
+                    <div className="text-center py-12 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50">
+                        <p className="text-gray-500">No infrastructure added yet.</p>
+                        <button type="button" onClick={handleAddBuilding} className="mt-2 text-primary hover:underline font-medium">Create your first building</button>
                     </div>
                 )}
                 
-                {infrastructure.map((building) => (
-                    <div key={building.id} className="border border-gray-300 rounded-xl p-5 bg-white shadow-sm relative">
-                        <button 
-                            type="button" 
-                            onClick={() => handleRemoveBuilding(building.id)}
-                            className="absolute top-4 right-4 text-gray-400 hover:text-red-500 transition-colors bg-white rounded-full p-1 border border-transparent hover:border-red-100"
-                            title="Remove Building"
-                        >
-                            <DeleteIcon />
-                        </button>
-                        
-                        {/* Building Name */}
-                        <div className="mb-6">
-                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Building Name / Number</label>
-                            <input 
-                                type="text" 
-                                value={building.name} 
-                                onChange={(e) => handleBuildingNameChange(building.id, e.target.value)}
-                                placeholder="e.g. Main Block, Hostel A, 2563" 
-                                className="block w-full max-w-sm rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm font-semibold"
-                            />
+                {hostelData.map((building) => (
+                    <div key={building.id} className="border border-gray-200 rounded-xl bg-white shadow-sm overflow-hidden">
+                        {/* Building Header */}
+                        <div className="bg-gray-100 p-4 border-b border-gray-200 flex items-center gap-4">
+                            <div className="flex-1">
+                                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Building Name</label>
+                                <input 
+                                    type="text" 
+                                    value={building.name} 
+                                    onChange={(e) => handleBuildingNameChange(building.id, e.target.value)}
+                                    placeholder="e.g. Boys Hostel A" 
+                                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm font-bold text-gray-800 bg-white"
+                                />
+                            </div>
+                            <button 
+                                type="button" 
+                                onClick={() => handleRemoveBuilding(building.id)}
+                                className="text-red-500 hover:text-red-700 p-2 hover:bg-red-50 rounded-full transition-colors"
+                                title="Delete Building"
+                            >
+                                <DeleteIcon />
+                            </button>
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                            {/* Floors Section */}
-                            <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
-                                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Floors</label>
-                                <div className="space-y-2 mb-3">
-                                    {building.floors.map((floor, idx) => (
-                                        <div key={idx} className="flex items-center justify-between bg-white px-3 py-2 rounded border border-gray-200 shadow-sm">
-                                            <span className="text-sm text-gray-800">{floor}</span>
-                                            <button type="button" onClick={() => handleRemoveFloor(building.id, idx)} className="text-red-400 hover:text-red-600">
-                                                <span className="text-xs font-bold">✕</span>
+                        <div className="p-4 bg-gray-50">
+                            {/* Floors List */}
+                            <div className="space-y-4">
+                                {building.floors.map((floor) => (
+                                    <div key={floor.id} className="bg-white border border-gray-200 rounded-lg p-3 shadow-sm">
+                                        <div className="flex items-center justify-between mb-3 border-b border-gray-100 pb-2">
+                                            <h4 className="font-semibold text-gray-700 text-sm">{floor.name}</h4>
+                                            <button 
+                                                type="button" 
+                                                onClick={() => handleRemoveFloor(building.id, floor.id)}
+                                                className="text-xs text-red-500 hover:text-red-700 hover:underline"
+                                            >
+                                                Remove Floor
                                             </button>
                                         </div>
-                                    ))}
-                                    {building.floors.length === 0 && <p className="text-xs text-gray-400 italic">No floors added.</p>}
-                                </div>
-                                <div className="flex gap-2">
-                                    <input 
-                                        type="text" 
-                                        placeholder="Floor Name (e.g. 1st)" 
-                                        value={newFloorInputs[building.id] || ''}
-                                        onChange={(e) => setNewFloorInputs({...newFloorInputs, [building.id]: e.target.value})}
-                                        className="flex-1 rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary text-xs py-1.5"
-                                        onKeyDown={(e) => { if(e.key === 'Enter') { e.preventDefault(); handleAddFloor(building.id); } }}
-                                    />
-                                    <button type="button" onClick={() => handleAddFloor(building.id)} className="px-3 py-1 bg-white border border-gray-300 rounded-md text-xs font-medium hover:bg-gray-100">Add</button>
-                                </div>
+                                        
+                                        {/* Rooms in Floor */}
+                                        <div className="flex flex-wrap gap-2 items-center">
+                                            <span className="text-xs text-gray-500 font-medium mr-1">Rooms:</span>
+                                            {floor.rooms.map((room, idx) => (
+                                                <div key={idx} className="flex items-center bg-blue-50 text-blue-700 px-2 py-1 rounded border border-blue-100 text-xs font-medium">
+                                                    {room}
+                                                    <button type="button" onClick={() => handleRemoveRoom(building.id, floor.id, idx)} className="ml-1.5 text-blue-400 hover:text-blue-600 font-bold focus:outline-none leading-none">
+                                                        &times;
+                                                    </button>
+                                                </div>
+                                            ))}
+                                            
+                                            {/* Add Room Input */}
+                                            <div className="flex items-center gap-1 ml-2">
+                                                <input 
+                                                    type="text" 
+                                                    placeholder="Room No." 
+                                                    value={newRoomInputs[floor.id] || ''}
+                                                    onChange={(e) => setNewRoomInputs({...newRoomInputs, [floor.id]: e.target.value})}
+                                                    className="w-20 rounded border-gray-300 py-1 px-2 text-xs focus:ring-primary focus:border-primary"
+                                                    onKeyDown={(e) => { if(e.key === 'Enter') { e.preventDefault(); handleAddRoom(building.id, floor.id); } }}
+                                                />
+                                                <button 
+                                                    type="button" 
+                                                    onClick={() => handleAddRoom(building.id, floor.id)}
+                                                    className="bg-gray-200 hover:bg-gray-300 text-gray-700 rounded px-2 py-1 text-xs font-bold"
+                                                >
+                                                    +
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
                             </div>
 
-                            {/* Rooms Section */}
-                            <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
-                                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Rooms</label>
-                                <div className="flex flex-wrap gap-2 mb-3">
-                                    {building.rooms.map((room, idx) => (
-                                        <div key={idx} className="flex items-center bg-blue-50 text-blue-700 px-2 py-1 rounded border border-blue-100">
-                                            <span className="text-xs font-medium mr-2">{room}</span>
-                                            <button type="button" onClick={() => handleRemoveRoom(building.id, idx)} className="text-blue-400 hover:text-blue-600 leading-none">
-                                                <span className="text-xs">✕</span>
-                                            </button>
-                                        </div>
-                                    ))}
-                                    {building.rooms.length === 0 && <p className="text-xs text-gray-400 italic w-full">No rooms added.</p>}
-                                </div>
-                                <div className="flex gap-2">
-                                    <input 
-                                        type="text" 
-                                        placeholder="Room No (e.g. 101)" 
-                                        value={newRoomInputs[building.id] || ''}
-                                        onChange={(e) => setNewRoomInputs({...newRoomInputs, [building.id]: e.target.value})}
-                                        className="flex-1 rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary text-xs py-1.5"
-                                        onKeyDown={(e) => { if(e.key === 'Enter') { e.preventDefault(); handleAddRoom(building.id); } }}
-                                    />
-                                    <button type="button" onClick={() => handleAddRoom(building.id)} className="px-3 py-1 bg-white border border-gray-300 rounded-md text-xs font-medium hover:bg-gray-100">Add</button>
-                                </div>
+                            {/* Add Floor Section */}
+                            <div className="mt-4 flex gap-2 items-center pt-4 border-t border-gray-200">
+                                <input 
+                                    type="text" 
+                                    placeholder="New Floor Name (e.g. 1st Floor)" 
+                                    value={newFloorInputs[building.id] || ''}
+                                    onChange={(e) => setNewFloorInputs({...newFloorInputs, [building.id]: e.target.value})}
+                                    className="flex-1 rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm"
+                                    onKeyDown={(e) => { if(e.key === 'Enter') { e.preventDefault(); handleAddFloor(building.id); } }}
+                                />
+                                <button 
+                                    type="button" 
+                                    onClick={() => handleAddFloor(building.id)} 
+                                    className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-50 shadow-sm"
+                                >
+                                    Add Floor
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -371,18 +367,24 @@ const Profile: React.FC<ProfileProps> = ({ user }) => {
             </div>
         </div>
         
-        <div className="md:col-span-2 flex justify-end items-center gap-4 mt-4 border-t pt-6">
+        <div className="md:col-span-2 flex justify-end items-center gap-4 mt-4 border-t border-gray-200 pt-6">
              {profileExists && (
-                <button type="button" onClick={handleDelete} disabled={saving} className="px-6 py-2 border border-red-500 text-red-500 rounded-md hover:bg-red-50 disabled:opacity-50 transition-colors">
+                <button type="button" onClick={handleDelete} disabled={saving} className="px-6 py-2 border border-red-500 text-red-500 rounded-md hover:bg-red-50 disabled:opacity-50 transition-colors text-sm font-medium">
                     Delete Profile
                 </button>
             )}
-            <button type="submit" disabled={saving} className="px-6 py-2 bg-primary text-white rounded-md hover:bg-primary-dark disabled:bg-gray-400 flex items-center gap-2 transition-colors">
+            <button type="submit" disabled={saving} className="px-8 py-2.5 bg-primary text-white rounded-md hover:bg-primary-dark disabled:bg-gray-400 flex items-center gap-2 transition-colors text-sm font-bold shadow-md">
                  {saving && <Spinner size="5" />}
-                 {saving ? 'Saving...' : 'Save Profile'}
+                 {saving ? 'Saving...' : 'Save All Changes'}
             </button>
         </div>
       </form>
+      <style>{`
+        .input-field {
+            padding: 0.5rem 0.75rem;
+            border: 1px solid #d1d5db;
+        }
+      `}</style>
     </div>
   );
 };

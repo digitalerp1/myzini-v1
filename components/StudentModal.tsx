@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../services/supabase';
-import { Student, Class } from '../types';
+import { Student, Class, HostelBuilding } from '../types';
 import Spinner from './Spinner';
 import ImageUpload from './ImageUpload';
 import { sanitizeForPath } from '../utils/textUtils';
@@ -14,13 +14,6 @@ interface StudentModalProps {
 }
 
 const bloodGroups = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
-
-// Interface for infrastructure options
-interface InfraBuilding {
-    name: string;
-    floors: string[];
-    rooms: string[];
-}
 
 // Simple cache to avoid refetching the school name repeatedly
 let schoolNameCache: string | null = null;
@@ -54,8 +47,8 @@ const StudentModal: React.FC<StudentModalProps> = ({ student, classes, onClose, 
     const [isSuggestingRoll, setIsSuggestingRoll] = useState(false);
     
     // Infrastructure state
-    const [infrastructure, setInfrastructure] = useState<InfraBuilding[]>([]);
-    const [availableFloors, setAvailableFloors] = useState<string[]>([]);
+    const [hostelData, setHostelData] = useState<HostelBuilding[]>([]);
+    const [availableFloors, setAvailableFloors] = useState<{id: string, name: string}[]>([]);
     const [availableRooms, setAvailableRooms] = useState<string[]>([]);
 
     useEffect(() => {
@@ -64,7 +57,7 @@ const StudentModal: React.FC<StudentModalProps> = ({ student, classes, onClose, 
             if (user) {
                 const { data } = await supabase
                     .from('owner')
-                    .select('school_name, floor_numbers')
+                    .select('school_name, hostel_managment')
                     .eq('uid', user.id)
                     .single();
                 
@@ -76,23 +69,9 @@ const StudentModal: React.FC<StudentModalProps> = ({ student, classes, onClose, 
                         setSchoolName(schoolNameCache);
                     }
 
-                    // Parse Infrastructure
-                    if (data.floor_numbers && typeof data.floor_numbers === 'string') {
-                        try {
-                            const buildings = data.floor_numbers.split('+').map((part: string) => {
-                                if (!part.includes('=')) return null;
-                                const [name, rest] = part.split('=');
-                                const [floorsStr, roomsStr] = rest ? rest.split('@') : ['', ''];
-                                return {
-                                    name: name || '',
-                                    floors: floorsStr ? floorsStr.split(',').filter(Boolean) : [],
-                                    rooms: roomsStr ? roomsStr.split(',').filter(Boolean) : []
-                                };
-                            }).filter(Boolean) as InfraBuilding[];
-                            setInfrastructure(buildings);
-                        } catch (e) {
-                            console.error("Error parsing infrastructure", e);
-                        }
+                    // Load Hostel Data from JSON column
+                    if (data.hostel_managment) {
+                        setHostelData(data.hostel_managment as HostelBuilding[]);
                     }
                 }
             }
@@ -100,22 +79,47 @@ const StudentModal: React.FC<StudentModalProps> = ({ student, classes, onClose, 
         fetchSchoolData();
     }, []);
 
-    // Effect to update available floors/rooms when building changes
+    // Effect to update available floors when building changes
     useEffect(() => {
         if (formData.building_name) {
-            const selectedBuilding = infrastructure.find(b => b.name === formData.building_name);
+            const selectedBuilding = hostelData.find(b => b.name === formData.building_name);
             if (selectedBuilding) {
-                setAvailableFloors(selectedBuilding.floors);
-                setAvailableRooms(selectedBuilding.rooms);
+                setAvailableFloors(selectedBuilding.floors.map(f => ({id: f.id, name: f.name})));
             } else {
                 setAvailableFloors([]);
-                setAvailableRooms([]);
             }
         } else {
             setAvailableFloors([]);
+        }
+        // When building changes, floor and room might become invalid if not cleared, 
+        // but we keep them unless the user changes them or we can clear them here if strict.
+        // For better UX, if building changes, we should probably verify if floor still exists or clear it.
+        // Let's rely on the user to pick new ones for simplicity, or:
+        if (!hostelData.find(b => b.name === formData.building_name)) {
+             // If building is invalid/changed, existing floor selection is likely invalid for new building
+             // We can optionally clear floor/room here, but let's just update the lists.
+        }
+    }, [formData.building_name, hostelData]);
+
+    // Effect to update available rooms when floor changes
+    useEffect(() => {
+        if (formData.building_name && formData.floor_name) {
+            const selectedBuilding = hostelData.find(b => b.name === formData.building_name);
+            if (selectedBuilding) {
+                const selectedFloor = selectedBuilding.floors.find(f => f.name === formData.floor_name);
+                if (selectedFloor) {
+                    setAvailableRooms(selectedFloor.rooms);
+                } else {
+                    setAvailableRooms([]);
+                }
+            } else {
+                setAvailableRooms([]);
+            }
+        } else {
             setAvailableRooms([]);
         }
-    }, [formData.building_name, infrastructure]);
+    }, [formData.floor_name, formData.building_name, hostelData]);
+
 
     useEffect(() => {
         // Only suggest roll number for new students when a class is selected
@@ -153,7 +157,19 @@ const StudentModal: React.FC<StudentModalProps> = ({ student, classes, onClose, 
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: value }));
+        setFormData(prev => {
+            const newData = { ...prev, [name]: value };
+            
+            // Logic to clear dependent fields
+            if (name === 'building_name') {
+                newData.floor_name = '';
+                newData.room_no = '';
+            } else if (name === 'floor_name') {
+                newData.room_no = '';
+            }
+            
+            return newData;
+        });
     };
 
     const handlePhotoUrlChange = (url: string) => {
@@ -278,30 +294,33 @@ const StudentModal: React.FC<StudentModalProps> = ({ student, classes, onClose, 
                     </div>
                     
                     {/* Hostel / Infrastructure Section */}
-                    {infrastructure.length > 0 && (
-                        <div className="md:col-span-2 grid grid-cols-3 gap-4 border-t pt-4 mt-2">
-                            <h3 className="col-span-3 text-sm font-semibold text-gray-600">Accommodation Details</h3>
+                    {hostelData.length > 0 && (
+                        <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-4 border-t border-gray-100 pt-4 mt-2 bg-gray-50 p-4 rounded-lg">
+                            <h3 className="md:col-span-3 text-sm font-bold text-gray-700 mb-1">Hostel Room Assignment</h3>
+                            
                             <div>
-                                <label className="block text-xs font-medium text-gray-700">Building</label>
-                                <select name="building_name" value={formData.building_name} onChange={handleChange} className="mt-1 input-field text-sm">
+                                <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Building</label>
+                                <select name="building_name" value={formData.building_name} onChange={handleChange} className="input-field text-sm">
                                     <option value="">Select Building</option>
-                                    {infrastructure.map((b, i) => (
-                                        <option key={i} value={b.name}>{b.name}</option>
+                                    {hostelData.map((b) => (
+                                        <option key={b.id} value={b.name}>{b.name}</option>
                                     ))}
                                 </select>
                             </div>
+                            
                             <div>
-                                <label className="block text-xs font-medium text-gray-700">Floor</label>
-                                <select name="floor_name" value={formData.floor_name} onChange={handleChange} className="mt-1 input-field text-sm" disabled={!formData.building_name}>
+                                <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Floor</label>
+                                <select name="floor_name" value={formData.floor_name} onChange={handleChange} className="input-field text-sm" disabled={!formData.building_name}>
                                     <option value="">Select Floor</option>
-                                    {availableFloors.map((f, i) => (
-                                        <option key={i} value={f}>{f}</option>
+                                    {availableFloors.map((f) => (
+                                        <option key={f.id} value={f.name}>{f.name}</option>
                                     ))}
                                 </select>
                             </div>
+                            
                             <div>
-                                <label className="block text-xs font-medium text-gray-700">Room</label>
-                                <select name="room_no" value={formData.room_no} onChange={handleChange} className="mt-1 input-field text-sm" disabled={!formData.building_name}>
+                                <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Room No</label>
+                                <select name="room_no" value={formData.room_no} onChange={handleChange} className="input-field text-sm" disabled={!formData.floor_name}>
                                     <option value="">Select Room</option>
                                     {availableRooms.map((r, i) => (
                                         <option key={i} value={r}>{r}</option>
@@ -379,6 +398,10 @@ const StudentModal: React.FC<StudentModalProps> = ({ student, classes, onClose, 
                 .input-field:focus {
                     border-color: #4f46e5;
                     --tw-ring-color: #4f46e5;
+                }
+                .input-field:disabled {
+                    background-color: #f3f4f6;
+                    cursor: not-allowed;
                 }
             `}</style>
         </div>

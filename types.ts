@@ -9,11 +9,21 @@ export interface OwnerProfile {
   address?: string;
   website?: string;
   school_code?: string;
-  // Infrastructure fields updated to string to support complex format "Name=Floors@Rooms"
-  building_number?: string; 
-  room_numbers?: string | number; 
-  floor_numbers?: string | number;
+  // Infrastructure fields
+  hostel_managment?: HostelBuilding[]; // JSON structure for Buildings -> Floors -> Rooms
   owner_name?: string;
+}
+
+export interface HostelBuilding {
+  id: string;
+  name: string;
+  floors: HostelFloor[];
+}
+
+export interface HostelFloor {
+  id: string;
+  name: string;
+  rooms: string[]; // Array of room numbers/names
 }
 
 export interface Staff {
@@ -98,13 +108,7 @@ export interface Student {
   blood_group?: string;
   previous_school_name?: string;
   other_fees?: OtherFee[];
-  // Monthly fee tracking can have the following string values:
-  // - 'undefined' or null: Not yet billed.
-  // - 'Dues': Billed but completely unpaid.
-  // - An ISO date string (legacy): Represents a full payment made before the partial payment system.
-  // - A payment string: Represents one or more partial payments.
-  //   - Single payment: "AMOUNT=d=ISODATE" (e.g., "250=d=2024-07-15T10:30:00.000Z")
-  //   - Multiple payments are separated by semicolons: "250=d=DATE1;150=d=DATE2"
+  // Monthly fee tracking
   january?: string;
   february?: string;
   march?: string;
@@ -119,7 +123,7 @@ export interface Student {
   december?: string;
   previous_dues?: number;
   
-  // Infrastructure fields
+  // Infrastructure fields (Assigned Room)
   building_name?: string;
   floor_name?: string;
   room_no?: string;
