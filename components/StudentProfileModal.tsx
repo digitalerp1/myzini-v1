@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../services/supabase';
 import { Student, Class, OtherFee, StudentHostelData, HostelFeeRecord } from '../types';

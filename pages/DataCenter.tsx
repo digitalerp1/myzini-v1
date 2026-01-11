@@ -1,64 +1,92 @@
 
-import React, { useState, useCallback } from 'react';
+import React, { useState } from 'react';
 import { supabase } from '../services/supabase';
 import Spinner from '../components/Spinner';
 import DownloadIcon from '../components/icons/DownloadIcon';
 import ArchiveIcon from '../components/icons/ArchiveIcon';
+import PlusIcon from '../components/icons/PlusIcon';
 
 interface EntityConfig {
     table: string;
     label: string;
     description: string;
-    format: string;
+    fields: string[];
+    example: any;
 }
 
 const entities: EntityConfig[] = [
-    { table: 'students', label: 'Students', description: 'Student profiles, admission details, and fees status.', format: '{ "name": "string", "class": "string", "roll_number": "string", ... }' },
-    { table: 'staff', label: 'Staff', description: 'Teacher and employee records including salary amounts.', format: '{ "name": "string", "staff_id": "string", "salary_amount": number, ... }' },
-    { table: 'attendance', label: 'Student Attendance', description: 'Daily attendance logs for all classes.', format: '{ "class_id": number, "date": "YYYY-MM-DD", "present": "string", ... }' },
-    { table: 'staff_attendence', label: 'Staff Attendance', description: 'Daily staff attendance logs.', format: '{ "date": "YYYY-MM-DD", "staff_id": "comma,separated,ids" }' },
-    { table: 'salary_records', label: 'Salary Payments', description: 'Transaction history of salaries paid to staff.', format: '{ "staff_id": "string", "amount": number, "date_time": "ISO_DATE" }' },
-    { table: 'expenses', label: 'General Expenses', description: 'School overhead costs and other expenses.', format: '{ "category": "string", "amount": number, "date": "YYYY-MM-DD" }' },
+    { 
+        table: 'students', 
+        label: 'Students', 
+        description: 'Complete student profiles and monthly fee statuses.', 
+        fields: ['name', 'class', 'roll_number', 'mobile', 'father_name', 'registration_date', 'january...december (Status String)'],
+        example: { name: "John Doe", class: "10-A", roll_number: "101", january: "Paid", february: "Dues" }
+    },
+    { 
+        table: 'staff', 
+        label: 'Staff', 
+        description: 'Employee records and base salary configurations.', 
+        fields: ['name', 'staff_id', 'mobile', 'salary_amount', 'joining_date', 'is_active'],
+        example: { name: "Alice Smith", staff_id: "STAFF-001", salary_amount: 25000, is_active: true }
+    },
+    { 
+        table: 'attendance', 
+        label: 'Attendance', 
+        description: 'Daily student presence logs.', 
+        fields: ['class_id (Number)', 'date (YYYY-MM-DD)', 'present (Roll numbers string)', 'absent (Roll numbers string)'],
+        example: { class_id: 12, date: "2024-05-20", present: "101,102,105", absent: "103,104" }
+    },
+    { 
+        table: 'salary_records', 
+        label: 'Salary Ledger', 
+        description: 'Payment history of staff salaries.', 
+        fields: ['staff_id', 'amount', 'date_time', 'notes'],
+        example: { staff_id: "STAFF-001", amount: 25000, date_time: "2024-05-01T10:00:00Z" }
+    },
+    { 
+        table: 'expenses', 
+        label: 'Expenses', 
+        description: 'General school overheads.', 
+        fields: ['category', 'amount', 'date (YYYY-MM-DD)', 'notes'],
+        example: { category: "Stationery", amount: 1200, date: "2024-05-15" }
+    }
 ];
 
 const DataCenter: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-    const [importingTable, setImportingTable] = useState<string | null>(null);
+    const [activeDoc, setActiveDoc] = useState<string | null>(null);
 
     const showMessage = (type: 'success' | 'error', text: string) => {
         setMessage({ type, text });
-        setTimeout(() => setMessage(null), 10000);
+        setTimeout(() => setMessage(null), 8000);
     };
 
-    const handleExport = async (table: string, label: string) => {
+    const handleBulkExport = async () => {
         setLoading(true);
         try {
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) throw new Error("Authentication failed.");
 
-            const { data, error } = await supabase.from(table).select('*').eq('uid', user.id);
-            if (error) throw error;
-
-            if (!data || data.length === 0) {
-                showMessage('error', `No records found in ${label} to export.`);
-                return;
+            const exportData: any = {};
+            for (const entity of entities) {
+                const { data, error } = await supabase.from(entity.table).select('*').eq('uid', user.id);
+                if (!error && data) {
+                    exportData[entity.table] = data.map(({ uid, id, created_at, ...rest }) => rest);
+                }
             }
 
-            // Remove internal metadata
-            const cleanData = data.map(({ uid, id, created_at, ...rest }) => rest);
-
-            const blob = new Blob([JSON.stringify(cleanData, null, 2)], { type: 'application/json' });
+            const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `zini_${table}_export_${new Date().toISOString().split('T')[0]}.json`;
+            a.download = `my_zini_full_backup_${new Date().toISOString().split('T')[0]}.json`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
 
-            showMessage('success', `${label} data exported successfully.`);
+            showMessage('success', "Full school database exported successfully into one file.");
         } catch (err: any) {
             showMessage('error', `Export failed: ${err.message}`);
         } finally {
@@ -66,123 +94,193 @@ const DataCenter: React.FC = () => {
         }
     };
 
-    const handleImport = async (e: React.ChangeEvent<HTMLInputElement>, table: string, label: string) => {
+    const handleBulkImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
 
-        if (!window.confirm(`Warning: You are about to import data into ${label}. This will add new records. Ensure the format is correct. Proceed?`)) {
+        if (!window.confirm("CRITICAL: You are about to perform a bulk import. This will add new records to multiple tables. Continue?")) {
             e.target.value = '';
             return;
         }
 
-        setImportingTable(table);
+        setLoading(true);
         try {
             const { data: { user } } = await supabase.auth.getUser();
-            if (!user) throw new Error("Authentication required.");
+            if (!user) throw new Error("Auth failed.");
 
             const text = await file.text();
             const jsonData = JSON.parse(text);
+            let summary = "";
 
-            if (!Array.isArray(jsonData)) {
-                throw new Error("Invalid file format. Data must be a JSON array.");
+            // Check if it's a multi-entity object or a single array
+            const processTable = async (tableName: string, rows: any[]) => {
+                const dataToInsert = rows.map(item => {
+                    const { id, uid, created_at, ...rest } = item;
+                    return { ...rest, uid: user.id };
+                });
+                const { error } = await supabase.from(tableName).insert(dataToInsert);
+                if (error) throw new Error(`Error in ${tableName}: ${error.message}`);
+                return dataToInsert.length;
+            };
+
+            if (Array.isArray(jsonData)) {
+                // If it's a single array, we need to ask or assume table (default to students for safety)
+                const count = await processTable('students', jsonData);
+                summary = `Imported ${count} records into Students.`;
+            } else {
+                // It's a bulk object { students: [...], staff: [...] }
+                for (const tableKey in jsonData) {
+                    const rows = jsonData[tableKey];
+                    if (Array.isArray(rows)) {
+                        const count = await processTable(tableKey, rows);
+                        summary += `[${tableKey}: ${count}] `;
+                    }
+                }
             }
 
-            // Prepare data by injecting current user UID and removing any existing IDs to avoid conflicts
-            const dataToInsert = jsonData.map(item => {
-                const { id, uid, ...rest } = item;
-                return { ...rest, uid: user.id };
-            });
-
-            const { error } = await supabase.from(table).insert(dataToInsert);
-            if (error) throw error;
-
-            showMessage('success', `Successfully imported ${dataToInsert.length} records into ${label}.`);
+            showMessage('success', `Bulk Import Complete: ${summary}`);
         } catch (err: any) {
-            showMessage('error', `Import failed: ${err.message}`);
+            showMessage('error', `Import Interrupted: ${err.message}`);
         } finally {
-            setImportingTable(null);
+            setLoading(false);
             e.target.value = '';
         }
     };
 
     return (
-        <div className="space-y-8 max-w-6xl mx-auto pb-12">
-            <div className="bg-indigo-900 rounded-3xl p-8 text-white shadow-xl relative overflow-hidden">
+        <div className="space-y-8 max-w-6xl mx-auto pb-20">
+            {/* Main Header Card */}
+            <div className="bg-gradient-to-r from-primary-dark to-indigo-900 rounded-3xl p-10 text-white shadow-2xl relative overflow-hidden">
                 <div className="absolute top-0 right-0 opacity-10 pointer-events-none transform translate-x-1/4 -translate-y-1/4">
-                    <ArchiveIcon className="w-64 h-64" />
+                    <ArchiveIcon className="w-96 h-96" />
                 </div>
-                <div className="relative z-10">
-                    <h1 className="text-4xl font-black mb-2">School Data Center</h1>
-                    <p className="text-indigo-200 text-lg">Central hub for manual data migration, backup, and imports.</p>
-                </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {entities.map((entity) => (
-                    <div key={entity.table} className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 flex flex-col hover:shadow-md transition-shadow">
-                        <div className="flex justify-between items-start mb-4">
-                            <div>
-                                <h3 className="text-xl font-bold text-gray-800">{entity.label}</h3>
-                                <p className="text-sm text-gray-500 mt-1">{entity.description}</p>
-                            </div>
-                            <div className="p-2 bg-indigo-50 rounded-lg text-indigo-600">
-                                <ArchiveIcon className="w-6 h-6" />
-                            </div>
-                        </div>
-
-                        <div className="bg-gray-50 rounded-lg p-3 mb-6 font-mono text-[10px] text-gray-600 border border-gray-100">
-                            <p className="font-bold text-indigo-700 mb-1 uppercase tracking-widest">Required Structure</p>
-                            {entity.format}
-                        </div>
-
-                        <div className="mt-auto grid grid-cols-2 gap-4">
-                            <button
-                                onClick={() => handleExport(entity.table, entity.label)}
+                <div className="relative z-10 max-w-2xl">
+                    <h1 className="text-5xl font-black mb-4">Data Center</h1>
+                    <p className="text-indigo-100 text-xl leading-relaxed mb-8">
+                        The master hub for school migration. Export your entire database into a single file or import thousands of records instantly.
+                    </p>
+                    
+                    <div className="flex flex-wrap gap-4">
+                        <button
+                            onClick={handleBulkExport}
+                            disabled={loading}
+                            className="flex items-center gap-3 px-8 py-4 bg-white text-primary-dark font-black rounded-2xl hover:bg-indigo-50 transition-all shadow-lg active:scale-95 disabled:opacity-50"
+                        >
+                            {loading ? <Spinner size="6" /> : <DownloadIcon />}
+                            EXPORT FULL BACKUP
+                        </button>
+                        
+                        <div className="relative">
+                            <input
+                                type="file"
+                                accept=".json"
+                                onChange={handleBulkImport}
+                                className="absolute inset-0 opacity-0 cursor-pointer z-20"
                                 disabled={loading}
-                                className="flex items-center justify-center gap-2 px-4 py-2.5 bg-white border-2 border-indigo-600 text-indigo-600 font-bold rounded-xl hover:bg-indigo-50 disabled:opacity-50 transition-colors"
+                            />
+                            <button
+                                disabled={loading}
+                                className="flex items-center gap-3 px-8 py-4 bg-indigo-500 text-white font-black rounded-2xl hover:bg-indigo-400 transition-all shadow-lg active:scale-95 disabled:opacity-50"
                             >
-                                <DownloadIcon /> Export
+                                <PlusIcon className="w-6 h-6" />
+                                IMPORT MASTER FILE
                             </button>
-                            
-                            <div className="relative">
-                                <input
-                                    type="file"
-                                    accept=".json"
-                                    onChange={(e) => handleImport(e, entity.table, entity.label)}
-                                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10"
-                                    disabled={!!importingTable}
-                                />
-                                <button
-                                    disabled={!!importingTable}
-                                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 disabled:bg-gray-400 transition-colors"
-                                >
-                                    {importingTable === entity.table ? <Spinner size="5" /> : 'Import JSON'}
-                                </button>
-                            </div>
                         </div>
                     </div>
-                ))}
+                </div>
             </div>
 
+            {/* Individual Table Management & Documentation */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <div className="lg:col-span-2 space-y-6">
+                    <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
+                        <ArchiveIcon className="w-6 h-6 text-primary" />
+                        Entity Specific Management
+                    </h2>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {entities.map((e) => (
+                            <div key={e.table} className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+                                <h3 className="font-bold text-lg text-gray-800 mb-1">{e.label}</h3>
+                                <p className="text-sm text-gray-500 mb-4">{e.description}</p>
+                                <div className="flex gap-2">
+                                    <button 
+                                        onClick={() => setActiveDoc(e.table)}
+                                        className="text-xs font-bold text-primary hover:underline"
+                                    >
+                                        View Format Guide
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Data Format Documentation Section */}
+                <div className="bg-gray-100 rounded-3xl p-6 border-2 border-gray-200">
+                    <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                        Format Dictionary
+                    </h2>
+                    <p className="text-xs text-gray-500 mb-6">Select an entity to see the required JSON schema for importing.</p>
+                    
+                    {activeDoc ? (
+                        <div className="space-y-4 animate-fade-in">
+                            <div className="flex justify-between items-center">
+                                <h3 className="font-black text-primary uppercase text-sm">{activeDoc} Structure</h3>
+                                <button onClick={() => setActiveDoc(null)} className="text-gray-400 hover:text-gray-600 font-bold">&times;</button>
+                            </div>
+                            <div className="bg-white p-4 rounded-xl border border-gray-300 font-mono text-[11px] overflow-x-auto">
+                                <p className="font-bold text-gray-400 mb-2">// REQUIRED FIELDS</p>
+                                <ul className="list-disc list-inside space-y-1 mb-4 text-gray-700">
+                                    {entities.find(e => e.table === activeDoc)?.fields.map(f => <li key={f}>{f}</li>)}
+                                </ul>
+                                <p className="font-bold text-gray-400 mb-2">// EXAMPLE ROW</p>
+                                <pre className="text-indigo-600">
+                                    {JSON.stringify(entities.find(e => e.table === activeDoc)?.example, null, 2)}
+                                </pre>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="text-center py-10">
+                            <div className="text-gray-300 mb-2">Select a table to view its schema</div>
+                            <svg className="w-12 h-12 text-gray-200 mx-auto" fill="currentColor" viewBox="0 0 20 20"><path d="M9 4.804A7.993 7.993 0 002 12a7.998 7.998 0 003 6.338V17a1 1 0 012 0v1.338A7.998 7.998 0 0013 18.338V17a1 1 0 012 0v1.338A7.998 7.998 0 0018 12a7.993 7.993 0 00-7-7.196V4a1 1 0 10-2 0v.804z"></path></svg>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* Status Feedback Notification */}
             {message && (
-                <div className={`fixed bottom-8 left-1/2 transform -translate-x-1/2 p-4 rounded-2xl shadow-2xl z-50 flex items-center gap-3 animate-bounce
-                    ${message.type === 'error' ? 'bg-rose-100 border-2 border-rose-500 text-rose-800' : 'bg-emerald-100 border-2 border-emerald-500 text-emerald-800'}`}>
-                    <span className="font-bold text-lg">{message.type === 'error' ? '✖' : '✔'}</span>
-                    <span className="font-medium">{message.text}</span>
+                <div className={`fixed bottom-10 left-1/2 transform -translate-x-1/2 px-8 py-5 rounded-3xl shadow-2xl z-50 flex items-center gap-4 animate-bounce
+                    ${message.type === 'error' ? 'bg-rose-100 border-4 border-rose-500 text-rose-900' : 'bg-emerald-100 border-4 border-emerald-500 text-emerald-900'}`}>
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-xl ${message.type === 'error' ? 'bg-rose-500' : 'bg-emerald-500'} text-white`}>
+                        {message.type === 'error' ? '!' : '✓'}
+                    </div>
+                    <div>
+                        <p className="font-black text-lg">System Message</p>
+                        <p className="text-sm font-medium">{message.text}</p>
+                    </div>
                 </div>
             )}
 
-            <div className="bg-amber-50 border-2 border-amber-200 rounded-2xl p-6 text-amber-800">
-                <h4 className="font-bold flex items-center gap-2 text-lg mb-2">
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
-                    Safety Instructions
+            {/* Warning Box */}
+            <div className="bg-amber-50 border-4 border-amber-200 rounded-3xl p-8 text-amber-900 shadow-sm">
+                <h4 className="font-black flex items-center gap-3 text-xl mb-4">
+                    <svg className="w-8 h-8 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                    CRITICAL SAFETY RULES
                 </h4>
-                <ul className="list-disc list-inside space-y-1 text-sm opacity-90">
-                    <li>Always <strong>Export</strong> your current data as a backup before performing an <strong>Import</strong>.</li>
-                    <li>Imports <strong>do not delete</strong> existing records; they only add new rows to the database.</li>
-                    <li>If you import duplicate data (same roll numbers, same dates), it may create duplicate entries.</li>
-                    <li>Ensure all date fields follow the <code>YYYY-MM-DD</code> format for proper indexing.</li>
-                </ul>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 text-sm leading-relaxed opacity-90 font-medium">
+                    <ul className="list-disc list-inside space-y-2">
+                        <li><strong>Backup First:</strong> Always perform an Export before an Import.</li>
+                        <li><strong>Structure:</strong> The master file must be an object with keys matching table names (e.g., "students", "staff").</li>
+                        <li><strong>Dates:</strong> Use <code>YYYY-MM-DD</code> or <code>ISO-8601</code> strings for all date fields.</li>
+                    </ul>
+                    <ul className="list-disc list-inside space-y-2">
+                        <li><strong>No Overwrites:</strong> Import only ADDS data; it does not delete or update existing records.</li>
+                        <li><strong>Duplicate Check:</strong> If you import the same file twice, you will have duplicate records.</li>
+                        <li><strong>Class ID:</strong> Attendance requires a numeric <code>class_id</code> from your database.</li>
+                    </ul>
+                </div>
             </div>
         </div>
     );
