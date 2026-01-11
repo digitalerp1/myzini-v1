@@ -30,6 +30,7 @@ import EmailConfirmationPage from './pages/EmailConfirmationPage';
 import HowToUse from './pages/HowToUse';
 import UpdatePassword from './pages/UpdatePassword';
 import Analysis from './pages/Analysis';
+import FeesAnalysis from './pages/FeesAnalysis';
 
 const App: React.FC = () => {
   const [session, setSession] = useState<Session | null>(null);
@@ -99,6 +100,7 @@ const App: React.FC = () => {
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<Dashboard user={session.user} />} />
         <Route path="/analysis" element={<Analysis user={session.user} />} />
+        <Route path="/fees-analysis" element={<FeesAnalysis user={session.user} />} />
         <Route path="/profile" element={<Profile user={session.user} />} />
         <Route path="/students" element={<Students />} />
         <Route path="/staff" element={<Staff />} />

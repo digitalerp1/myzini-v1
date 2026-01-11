@@ -23,6 +23,7 @@ import TransportIcon from './icons/TransportIcon';
 import HelpIcon from './icons/HelpIcon';
 import HostelIcon from './icons/HostelIcon';
 import ChartBarIcon from './icons/ChartBarIcon';
+import RupeeIcon from './icons/RupeeIcon';
 
 interface SidebarProps {
     isOpen: boolean;
@@ -58,6 +59,10 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                     <NavLink to="/dashboard" onClick={onClose} className={({ isActive }) => `${linkClasses} ${isActive ? activeLinkClasses : ''}`}>
                         <DashboardIcon />
                         <span className="mx-4">Dashboard</span>
+                    </NavLink>
+                    <NavLink to="/fees-analysis" onClick={onClose} className={({ isActive }) => `${linkClasses} ${isActive ? activeLinkClasses : ''}`}>
+                        <RupeeIcon className="w-6 h-6" />
+                        <span className="mx-4">Fees Analysis</span>
                     </NavLink>
                     <NavLink to="/analysis" onClick={onClose} className={({ isActive }) => `${linkClasses} ${isActive ? activeLinkClasses : ''}`}>
                         <ChartBarIcon />

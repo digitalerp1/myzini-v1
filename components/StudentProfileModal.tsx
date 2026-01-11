@@ -335,7 +335,7 @@ const StudentProfileModal: React.FC<StudentProfileModalProps> = ({ student: init
     const finalTotalPaid = totalPaid + otherFeesSummary.paid;
     const finalTotalDues = totalDues + otherFeesSummary.dues + (student.previous_dues || 0);
 
-    // FIX: Defined the accumulation type for reduce to avoid 'unknown' type errors when accessing properties.
+    // FIX: Define accumulator type explicitly to avoid 'unknown' errors when accessing properties
     const attendanceSummary = Array.from(attendanceStatus.values()).reduce((acc: { present: number; absent: number }, status: 'present' | 'absent') => {
         if (status === 'present') acc.present++;
         if (status === 'absent') acc.absent++;
@@ -711,7 +711,7 @@ const StudentProfileModal: React.FC<StudentProfileModalProps> = ({ student: init
                                                     </div>
                                                     <div className="bg-red-50 p-3 rounded-lg text-center border border-red-100">
                                                         <p className="text-xs font-bold text-red-600 uppercase">Balance Pending</p>
-                                                        <p className="text-xl font-bold text-red-900">₹{hostelTotalDues.toLocaleString()}</p>
+                                                        <p className="text-xl font-bold text-green-900">₹{hostelTotalDues.toLocaleString()}</p>
                                                     </div>
                                                 </div>
 
