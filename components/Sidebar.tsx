@@ -22,6 +22,7 @@ import ToolsIcon from './icons/ToolsIcon';
 import TransportIcon from './icons/TransportIcon';
 import HelpIcon from './icons/HelpIcon';
 import HostelIcon from './icons/HostelIcon';
+import ChartBarIcon from './icons/ChartBarIcon';
 
 interface SidebarProps {
     isOpen: boolean;
@@ -57,6 +58,10 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                     <NavLink to="/dashboard" onClick={onClose} className={({ isActive }) => `${linkClasses} ${isActive ? activeLinkClasses : ''}`}>
                         <DashboardIcon />
                         <span className="mx-4">Dashboard</span>
+                    </NavLink>
+                    <NavLink to="/analysis" onClick={onClose} className={({ isActive }) => `${linkClasses} ${isActive ? activeLinkClasses : ''}`}>
+                        <ChartBarIcon />
+                        <span className="mx-4">Analysis</span>
                     </NavLink>
                     <NavLink to="/profile" onClick={onClose} className={({ isActive }) => `${linkClasses} ${isActive ? activeLinkClasses : ''}`}>
                         <ProfileIcon />

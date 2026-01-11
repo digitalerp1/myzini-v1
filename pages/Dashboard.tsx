@@ -28,22 +28,25 @@ interface DashboardData {
     totalExpenses: number;
     totalSalariesPaid: number;
     totalDues: number;
+
+    // Today's specific stats
+    todayPaidAmount: number;
+    todayPresentStudents: number;
+    todayDuesStudents: number;
     
     attendanceToday: { label: string; value: number; color: string }[];
-    staffAttendanceToday: { label: string; value: number; color: string }[];
     
     revenueTrend: { label: string; value: number }[];
     expenseCategory: { label: string; value: number; color: string }[];
-    profitTrend: { label: string; value: number }[];
-    salaryVsRevenue: { label: string; value: number }[];
     
     classStrength: { label: string; value: number }[];
-    genderData: { label: string; value: number; color: string }[];
+    classAttendanceToday: { label: string; value: number }[];
+    classRevenueToday: { label: string; value: number }[];
+    classRevenueThisMonth: { label: string; value: number }[];
+    
     casteData: { label: string; value: number; color: string }[];
     feeStatusData: { label: string; value: number; color: string }[];
     admissionTrend: { label: string; value: number }[];
-    
-    examPerformance: { label: string; value: number }[];
 }
 
 const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -64,46 +67,33 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
         salaryRecords: SalaryRecord[],
         subjectsCount: number
     ) => {
-        const currentYear = new Date().getFullYear();
-        const today = new Date().toISOString().split('T')[0];
+        const now = new Date();
+        const todayStr = now.toISOString().split('T')[0];
+        const currentYear = now.getFullYear();
+        const currentMonthIdx = now.getMonth();
 
         // 1. Basic Counts
         const totalStudents = students.length;
         const totalStaff = staff.length;
         const totalClasses = classes.length;
         
-        // 2. Financials
-        const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
+        // 2. Financials & Today's Stats
         const totalSalariesPaid = salaryRecords.reduce((sum, s) => sum + s.amount, 0);
+        const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0) + totalSalariesPaid;
         
         let totalRevenue = 0;
         let totalDues = 0;
-        let feeFullyPaidCount = 0;
-        let feePartialCount = 0;
-        let feeDuesCount = 0;
+        let todayPaidAmount = 0;
+        let todayDuesStudents = 0;
 
         const monthlyRevenue = new Array(12).fill(0);
-        const monthlyExpenses = new Array(12).fill(0);
-        const monthlySalaries = new Array(12).fill(0);
         const monthlyAdmissions = new Array(12).fill(0);
-
-        // Process Expenses & Salaries by Month
-        expenses.forEach(e => {
-            const d = new Date(e.date);
-            if (d.getFullYear() === currentYear) monthlyExpenses[d.getMonth()] += e.amount;
-        });
-        salaryRecords.forEach(s => {
-            const d = new Date(s.date_time);
-            if (d.getFullYear() === currentYear) {
-                monthlySalaries[d.getMonth()] += s.amount;
-                monthlyExpenses[d.getMonth()] += s.amount; // Add salaries to total monthly expenses calculation
-            }
-        });
+        
+        const classRevenueTodayMap = new Map<string, number>();
+        const classRevenueMonthMap = new Map<string, number>();
+        const casteMap = new Map<string, number>();
 
         const classFeesMap = new Map(classes.map(c => [c.class_name, c.school_fees || 0]));
-        
-        // Process Student Financials & Demographics
-        const casteMap = new Map<string, number>();
 
         students.forEach(s => {
             // Admissions Trend
@@ -112,163 +102,145 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                 if (d.getFullYear() === currentYear) monthlyAdmissions[d.getMonth()] += 1;
             }
 
-            // Caste
-            const caste = s.caste || 'Unspecified';
+            // Religion/Caste Distribution
+            const caste = s.caste || 'Other';
             casteMap.set(caste, (casteMap.get(caste) || 0) + 1);
 
-            // Fees Logic
-            let studentPaidTotal = 0;
-            let studentDueTotal = 0;
-            const yearlyFee = (classFeesMap.get(s.class || '') || 0) * 12; // Approx yearly total fee
+            let hasDuesToday = false;
+            const sClass = s.class || 'Unknown';
 
-            // Other Fees
-            if (s.other_fees) {
-                s.other_fees.forEach(fee => {
-                    if (fee.paid_date) {
-                        totalRevenue += fee.amount;
-                        const d = new Date(fee.paid_date);
-                        if (d.getFullYear() === currentYear) monthlyRevenue[d.getMonth()] += fee.amount;
-                        studentPaidTotal += fee.amount;
-                    } else {
-                        totalDues += fee.amount;
-                        studentDueTotal += fee.amount;
-                    }
-                });
-            }
+            // Process Monthly Fees
+            const fee = classFeesMap.get(sClass) || 0;
             
-            // Previous Dues
-            totalDues += (s.previous_dues || 0);
-            studentDueTotal += (s.previous_dues || 0);
-
-            // Monthly Fees
-            const fee = classFeesMap.get(s.class || '') || 0;
-            fullMonthKeys.forEach((month) => {
-                const status = s[month] as string | undefined;
-                if (!status || status === 'undefined') return;
+            fullMonthKeys.forEach((monthKey, idx) => {
+                const status = s[monthKey] as string | undefined;
+                if (!status || status === 'undefined') {
+                    if (idx <= currentMonthIdx) {
+                        totalDues += fee;
+                        hasDuesToday = true;
+                    }
+                    return;
+                }
 
                 if (status === 'Dues') {
                     totalDues += fee;
-                    studentDueTotal += fee;
+                    if (idx <= currentMonthIdx) hasDuesToday = true;
                 } else {
                     const parts = status.split(';');
-                    let monthPaid = 0;
+                    let studentMonthPaid = 0;
                     
+                    // Regex to check if it's just a legacy ISO date
                     if (/^\d{4}-\d{2}-\d{2}/.test(status) && !status.includes('=')) {
-                        monthPaid = fee;
+                        studentMonthPaid = fee;
                         totalRevenue += fee;
                         const d = new Date(status);
-                        if(d.getFullYear() === currentYear) monthlyRevenue[d.getMonth()] += fee;
+                        if (d.getFullYear() === currentYear) monthlyRevenue[d.getMonth()] += fee;
+                        if (status.startsWith(todayStr)) {
+                            todayPaidAmount += fee;
+                            classRevenueTodayMap.set(sClass, (classRevenueTodayMap.get(sClass) || 0) + fee);
+                        }
+                        if (d.getMonth() === currentMonthIdx && d.getFullYear() === currentYear) {
+                            classRevenueMonthMap.set(sClass, (classRevenueMonthMap.get(sClass) || 0) + fee);
+                        }
                     } else {
+                        // Modern partial payment format: AMT=d=DATE
                         parts.forEach(p => {
                             const [amtStr, dateStr] = p.split('=d=');
                             const amt = parseFloat(amtStr) || 0;
-                            monthPaid += amt;
+                            studentMonthPaid += amt;
                             totalRevenue += amt;
                             if (dateStr) {
                                 const d = new Date(dateStr);
-                                if(d.getFullYear() === currentYear) monthlyRevenue[d.getMonth()] += amt;
+                                if (d.getFullYear() === currentYear) monthlyRevenue[d.getMonth()] += amt;
+                                if (dateStr.startsWith(todayStr)) {
+                                    todayPaidAmount += amt;
+                                    classRevenueTodayMap.set(sClass, (classRevenueTodayMap.get(sClass) || 0) + amt);
+                                }
+                                if (d.getMonth() === currentMonthIdx && d.getFullYear() === currentYear) {
+                                    classRevenueMonthMap.set(sClass, (classRevenueMonthMap.get(sClass) || 0) + amt);
+                                }
                             }
                         });
                     }
 
-                    if (monthPaid < fee) {
-                        totalDues += (fee - monthPaid);
-                        studentDueTotal += (fee - monthPaid);
+                    if (studentMonthPaid < fee && idx <= currentMonthIdx) {
+                        totalDues += (fee - studentMonthPaid);
+                        hasDuesToday = true;
                     }
-                    studentPaidTotal += monthPaid;
                 }
             });
 
-            if (studentDueTotal === 0) feeFullyPaidCount++;
-            else if (studentPaidTotal > 0) feePartialCount++;
-            else feeDuesCount++;
+            // Check Other Fees
+            if (s.other_fees) {
+                s.other_fees.forEach(f => {
+                    if (f.paid_date) {
+                        totalRevenue += f.amount;
+                        if (f.paid_date.startsWith(todayStr)) todayPaidAmount += f.amount;
+                    } else {
+                        totalDues += f.amount;
+                        hasDuesToday = true;
+                    }
+                });
+            }
+
+            if (hasDuesToday) todayDuesStudents++;
         });
 
-        // 3. Charts Data Construction
+        // 3. Attendance Today
+        let todayPresentStudents = 0;
+        let todayAbsentStudents = 0;
+        const classAttendanceTodayMap = new Map<string, number>();
 
-        // A. Attendance
-        let presentCount = 0;
-        let absentCount = 0;
         attendance.forEach(r => {
-            if (r.date === today) {
-                presentCount += r.present ? r.present.split(',').length : 0;
-                absentCount += r.absent ? r.absent.split(',').length : 0;
+            if (r.date === todayStr) {
+                const presentCount = r.present ? r.present.split(',').length : 0;
+                const absentCount = r.absent ? r.absent.split(',').length : 0;
+                todayPresentStudents += presentCount;
+                todayAbsentStudents += absentCount;
+
+                // Find class name from ID
+                const cls = classes.find(c => c.id === r.class_id);
+                if (cls) {
+                    classAttendanceTodayMap.set(cls.class_name, presentCount);
+                }
             }
         });
-        const attendanceToday = [
-            { label: 'Present', value: presentCount, color: '#10b981' },
-            { label: 'Absent', value: absentCount, color: '#ef4444' },
-        ];
 
-        // Mock Staff Attendance (Replace with real if table available)
-        // Assuming active staff are expected to be present unless data says otherwise.
-        // Ideally fetch from `staff_attendence` table. For now, simple stats.
-        const activeStaff = staff.filter(s => s.is_active).length;
-        const staffAttendanceToday = [
-             { label: 'Active', value: activeStaff, color: '#3b82f6' },
-             { label: 'On Leave', value: 0, color: '#fbbf24' } // Placeholder
-        ];
-
-        // B. Trends
-        const revenueTrend = monthlyRevenue.map((val, i) => ({ label: monthNames[i], value: val }));
-        const profitTrend = monthlyRevenue.map((rev, i) => ({ label: monthNames[i], value: rev - monthlyExpenses[i] }));
+        // Construct chart datasets
+        const classAttendanceToday = Array.from(classAttendanceTodayMap.entries()).map(([label, value]) => ({ label, value }));
+        const classRevenueToday = Array.from(classRevenueTodayMap.entries()).map(([label, value]) => ({ label, value }));
+        const classRevenueThisMonth = Array.from(classRevenueMonthMap.entries()).map(([label, value]) => ({ label, value }));
         const admissionTrend = monthlyAdmissions.map((val, i) => ({ label: monthNames[i], value: val }));
-        const salaryVsRevenue = [
-            { label: 'Revenue', value: totalRevenue },
-            { label: 'Salaries Paid', value: totalSalariesPaid }
-        ];
-
-        // C. Categories & Demographics
+        const revenueTrend = monthlyRevenue.map((val, i) => ({ label: monthNames[i], value: val }));
+        
         const expenseMap = new Map<string, number>();
         expenses.forEach(e => expenseMap.set(e.category, (expenseMap.get(e.category) || 0) + e.amount));
-        const expenseColors = ['#f59e0b', '#6366f1', '#ec4899', '#8b5cf6', '#14b8a6'];
         const expenseCategory = Array.from(expenseMap.entries()).map(([label, value], i) => ({
-            label, value, color: expenseColors[i % expenseColors.length]
+            label, value, color: ['#f87171', '#60a5fa', '#34d399', '#fbbf24', '#a78bfa'][i % 5]
         }));
 
         const casteData = Array.from(casteMap.entries()).map(([label, value], i) => ({
-            label, value, color: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'][i % 5]
+            label, value, color: ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#ec4899'][i % 5]
         }));
 
-        const feeStatusData = [
-            { label: 'Fully Paid', value: feeFullyPaidCount, color: '#10b981' },
-            { label: 'Partial Paid', value: feePartialCount, color: '#f59e0b' },
-            { label: 'Unpaid/Dues', value: feeDuesCount, color: '#ef4444' }
-        ];
-
-        const boys = students.filter(s => s.gender === 'Male').length;
-        const girls = students.filter(s => s.gender === 'Female').length;
-        const genderData = [
-            { label: 'Boys', value: boys, color: '#3b82f6' },
-            { label: 'Girls', value: girls, color: '#ec4899' }
-        ];
-
-        // D. Academics
         const classCountMap = new Map<string, number>();
         students.forEach(s => { if(s.class) classCountMap.set(s.class, (classCountMap.get(s.class) || 0) + 1); });
-        const classStrength = Array.from(classCountMap.entries())
-            .map(([label, value]) => ({ label, value }))
-            .sort((a, b) => b.value - a.value).slice(0, 10);
-
-        const examMap = new Map<string, { total: number, count: number }>();
-        examResults.forEach(res => {
-            const totalMarks = res.subjects_marks.subjects.reduce((a, b) => a + Number(b.total_marks), 0);
-            const obtMarks = res.subjects_marks.subjects.reduce((a, b) => a + Number(b.obtained_marks), 0);
-            const percent = totalMarks > 0 ? (obtMarks / totalMarks) * 100 : 0;
-            const current = examMap.get(res.exam_name) || { total: 0, count: 0 };
-            examMap.set(res.exam_name, { total: current.total + percent, count: current.count + 1 });
-        });
-        const examPerformance = Array.from(examMap.entries()).map(([label, { total, count }]) => ({
-            label, value: Math.round(total / count)
-        }));
+        const classStrength = Array.from(classCountMap.entries()).map(([label, value]) => ({ label, value }));
 
         setData({
             totalStudents, totalStaff, totalClasses, totalSubjects: subjectsCount,
-            totalRevenue, totalExpenses: totalExpenses + totalSalariesPaid, totalSalariesPaid, totalDues,
-            attendanceToday, staffAttendanceToday,
-            revenueTrend, expenseCategory, profitTrend, salaryVsRevenue,
-            classStrength, genderData, casteData, feeStatusData, admissionTrend,
-            examPerformance
+            totalRevenue, totalExpenses, totalSalariesPaid, totalDues,
+            todayPaidAmount, todayPresentStudents, todayDuesStudents,
+            attendanceToday: [
+                { label: 'Present', value: todayPresentStudents, color: '#10b981' },
+                { label: 'Absent', value: todayAbsentStudents, color: '#ef4444' }
+            ],
+            revenueTrend, expenseCategory, casteData, admissionTrend,
+            classStrength, classAttendanceToday, classRevenueToday, classRevenueThisMonth,
+            feeStatusData: [
+                { label: 'Paid', value: totalStudents - todayDuesStudents, color: '#10b981' },
+                { label: 'Dues', value: todayDuesStudents, color: '#ef4444' }
+            ]
         });
 
     }, []);
@@ -277,14 +249,12 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
         const fetchData = async () => {
             setLoading(true);
             try {
-                const currentYear = new Date().getFullYear();
-                const [studentsRes, staffRes, classesRes, expensesRes, attendanceRes, resultsRes, salaryRes, subjectsRes] = await Promise.all([
+                const [studentsRes, staffRes, classesRes, expensesRes, attendanceRes, salaryRes, subjectsRes] = await Promise.all([
                     supabase.from('students').select('*'),
                     supabase.from('staff').select('*'),
                     supabase.from('classes').select('*'),
                     supabase.from('expenses').select('*'),
-                    supabase.from('attendance').select('date, present, absent').gte('date', `${currentYear}-01-01`),
-                    supabase.from('exam_results').select('*'),
+                    supabase.from('attendance').select('*').gte('date', new Date().toISOString().split('T')[0]),
                     supabase.from('salary_records').select('*'),
                     supabase.from('subjects').select('*', { count: 'exact', head: true })
                 ]);
@@ -297,7 +267,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                     classesRes.data as Class[],
                     expensesRes.data as Expense[],
                     attendanceRes.data as Attendance[],
-                    resultsRes.data as ExamResult[],
+                    [], // exam results not needed for this dashboard view
                     salaryRes.data as SalaryRecord[],
                     subjectsRes.count || 0
                 );
@@ -313,55 +283,61 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
     }, [processData, user.id]);
     
     if (loading) return <div className="flex items-center justify-center h-screen bg-gray-50"><Spinner size="12"/></div>;
-    if (error) return <div className="text-center text-red-500 p-8 bg-red-50 m-4 rounded-lg">Error loading dashboard: {error}</div>;
-    if (!data) return <div className="text-center text-gray-500">No data available.</div>;
+    if (error) return <div className="text-center text-red-500 p-8 bg-red-50 m-4 rounded-lg">Error: {error}</div>;
+    if (!data) return null;
 
     const formatCurrency = (amount: number) => `₹${amount.toLocaleString('en-IN')}`;
 
     return (
-        <div className="space-y-8 animate-fade-in pb-8">
-            {/* 1. Top KPI Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                 <StatCard title="Total Students" value={data.totalStudents} icon={<StudentsIcon className="w-6 h-6 text-white"/>} color="bg-indigo-500" />
-                 <StatCard title="Total Staff" value={data.totalStaff} icon={<StaffIcon className="w-6 h-6 text-white"/>} color="bg-pink-500" />
-                 <StatCard title="Total Classes" value={data.totalClasses} icon={<ClassesIcon className="w-6 h-6 text-white"/>} color="bg-blue-500" />
-                 <StatCard title="Subjects" value={data.totalSubjects} icon={<AcademicCapIcon />} color="bg-purple-500" />
-            </div>
-            
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                 <StatCard title="Total Revenue" value={formatCurrency(data.totalRevenue)} icon={<RupeeIcon className="w-6 h-6 text-white"/>} color="bg-emerald-500" />
-                 <StatCard title="Salaries Paid" value={formatCurrency(data.totalSalariesPaid)} icon={<RupeeIcon className="w-6 h-6 text-white"/>} color="bg-teal-500" />
-                 <StatCard title="Total Expenses" value={formatCurrency(data.totalExpenses)} icon={<ExpensesIcon className="w-6 h-6 text-white"/>} color="bg-rose-500" />
-                 <StatCard title="Net Dues" value={formatCurrency(data.totalDues)} icon={<DuesIcon className="w-6 h-6 text-white"/>} color="bg-amber-500" />
+        <div className="space-y-8 animate-fade-in pb-12">
+            {/* 1. Primary KPIs - Today's Summary */}
+            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                 <StatCard title="Total Present (Today)" value={data.todayPresentStudents} icon={<StudentsIcon className="w-6 h-6 text-white"/>} color="bg-green-500" />
+                 <StatCard title="Paid Money (Today)" value={formatCurrency(data.todayPaidAmount)} icon={<RupeeIcon className="w-6 h-6 text-white"/>} color="bg-emerald-600" />
+                 <StatCard title="Students with Dues" value={data.todayDuesStudents} icon={<DuesIcon className="w-6 h-6 text-white"/>} color="bg-rose-500" />
+                 <StatCard title="Total Staff" value={data.totalStaff} icon={<StaffIcon className="w-6 h-6 text-white"/>} color="bg-indigo-500" />
             </div>
 
-            {/* 2. Financial & Analytical Charts (Grid Layout) */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Row 1: Revenue, Profit, Fees */}
+            {/* 2. Secondary KPIs - School Overview */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                 <StatCard title="Total Revenue" value={formatCurrency(data.totalRevenue)} icon={<RupeeIcon className="w-6 h-6 text-white"/>} color="bg-blue-500" />
+                 <StatCard title="Total Expenses" value={formatCurrency(data.totalExpenses)} icon={<ExpensesIcon className="w-6 h-6 text-white"/>} color="bg-orange-500" />
+                 <StatCard title="Total Classes" value={data.totalClasses} icon={<ClassesIcon className="w-6 h-6 text-white"/>} color="bg-purple-500" />
+                 <StatCard title="Total Subjects" value={data.totalSubjects} icon={<AcademicCapIcon />} color="bg-teal-500" />
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                {/* 3. Real-time Attendance & Fees */}
                 <div className="lg:col-span-2">
-                    <LineChart title="Monthly Revenue Collection" data={data.revenueTrend} color="#10b981" />
+                    <SimpleBarChart title="Class-wise Attendance (Present Today)" data={data.classAttendanceToday} color="bg-green-400" />
                 </div>
-                <DonutChart title="Fee Payment Status" data={data.feeStatusData} />
+                <DonutChart title="Overall Attendance (Today)" data={data.attendanceToday} />
 
-                {/* Row 2: Profit, Expenses, Salaries */}
-                <SimpleBarChart title="Net Profit (Income - Expense)" data={data.profitTrend} color="bg-blue-500" />
+                <div className="lg:col-span-2">
+                    <SimpleBarChart title="Fees Collected Today by Class" data={data.classRevenueToday} color="bg-emerald-500" />
+                </div>
+                <div className="bg-white p-6 rounded-xl shadow-md flex flex-col justify-center text-center">
+                    <h3 className="text-gray-500 font-bold mb-2">Net Outstanding Dues</h3>
+                    <p className="text-4xl font-extrabold text-red-600">{formatCurrency(data.totalDues)}</p>
+                    <p className="text-xs text-gray-400 mt-2">Cumulative unpaid fees across all classes</p>
+                </div>
+
+                {/* 4. Monthly Performance */}
+                <div className="lg:col-span-2">
+                    <LineChart title="Monthly Revenue Trend (This Year)" data={data.revenueTrend} color="#4f46e5" />
+                </div>
+                <SimpleBarChart title="Revenue by Class (This Month)" data={data.classRevenueThisMonth} color="bg-indigo-500" />
+
+                {/* 5. Demographics & Admissions */}
+                <div className="lg:col-span-2">
+                    <SimpleBarChart title="Student Admissions per Month" data={data.admissionTrend} color="bg-teal-500" />
+                </div>
+                <DonutChart title="Religion/Caste Distribution" data={data.casteData} />
+
+                <div className="lg:col-span-2">
+                    <SimpleBarChart title="Student Strength by Class" data={data.classStrength} color="bg-blue-400" />
+                </div>
                 <DonutChart title="Expense Categories" data={data.expenseCategory} />
-                <SimpleBarChart title="Salaries vs Revenue" data={data.salaryVsRevenue} color="bg-teal-600" />
-
-                {/* Row 3: Academics & Demographics */}
-                <DonutChart title="Student Attendance (Today)" data={data.attendanceToday} />
-                <DonutChart title="Staff Status" data={data.staffAttendanceToday} />
-                <LineChart title="New Admissions Trend" data={data.admissionTrend} color="#8b5cf6" />
-
-                {/* Row 4: Demographics Detailed */}
-                <DonutChart title="Gender Ratio" data={data.genderData} />
-                <SimpleBarChart title="Student Count by Caste" data={data.casteData} color="bg-orange-400" />
-                <SimpleBarChart title="Class Strength" data={data.classStrength} color="bg-indigo-400" />
-                
-                {/* Row 5: Performance */}
-                <div className="lg:col-span-3">
-                     <SimpleBarChart title="Average Exam Performance (%)" data={data.examPerformance} color="bg-rose-500" />
-                </div>
             </div>
         </div>
     );

@@ -29,28 +29,22 @@ import Hostel from './pages/Hostel';
 import EmailConfirmationPage from './pages/EmailConfirmationPage';
 import HowToUse from './pages/HowToUse';
 import UpdatePassword from './pages/UpdatePassword';
+import Analysis from './pages/Analysis';
 
 const App: React.FC = () => {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
-  // Check for confirmation URL on initial load.
   const isConfirmationFlow = useMemo(() => window.location.hash.includes('type=signup'), []);
 
   useEffect(() => {
-    // If it's a confirmation flow, let EmailConfirmationPage handle it.
     if (isConfirmationFlow) {
       setLoading(false);
       return;
     }
 
     const getSession = async () => {
-      // Manual hash check to help detect credentials if auto-detection lags
-      if (window.location.hash && window.location.hash.includes('access_token')) {
-          console.log("Detected OAuth/MagicLink credentials in URL...");
-      }
-
       const { data: { session } } = await supabase.auth.getSession();
       setSession(session);
       setLoading(false);
@@ -64,9 +58,7 @@ const App: React.FC = () => {
         navigate('/update-password');
       }
 
-      // Clean up the URL if we have a session and a leftover hash
       if (session && window.location.hash && window.location.hash.includes('access_token')) {
-          // Remove the hash without reloading the page
           window.history.replaceState(null, '', window.location.pathname);
       }
 
@@ -93,10 +85,6 @@ const App: React.FC = () => {
   }
 
   if (!session) {
-    // If we are on the update password route, we might have a session from the reset link flow momentarily,
-    // but if not, we show Login. The onAuthStateChange handles the redirection flow.
-    // However, if the user directly navigates to /update-password without a session, they should probably login first 
-    // OR we just show Login.
     return (
         <Routes>
             <Route path="/update-password" element={<UpdatePassword />} />
@@ -110,6 +98,7 @@ const App: React.FC = () => {
       <Route element={<Layout />}>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<Dashboard user={session.user} />} />
+        <Route path="/analysis" element={<Analysis user={session.user} />} />
         <Route path="/profile" element={<Profile user={session.user} />} />
         <Route path="/students" element={<Students />} />
         <Route path="/staff" element={<Staff />} />

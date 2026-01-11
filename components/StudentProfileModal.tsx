@@ -335,7 +335,8 @@ const StudentProfileModal: React.FC<StudentProfileModalProps> = ({ student: init
     const finalTotalPaid = totalPaid + otherFeesSummary.paid;
     const finalTotalDues = totalDues + otherFeesSummary.dues + (student.previous_dues || 0);
 
-    const attendanceSummary = Array.from(attendanceStatus.values()).reduce((acc: { present: number; absent: number }, status) => {
+    // FIX: Defined the accumulation type for reduce to avoid 'unknown' type errors when accessing properties.
+    const attendanceSummary = Array.from(attendanceStatus.values()).reduce((acc: { present: number; absent: number }, status: 'present' | 'absent') => {
         if (status === 'present') acc.present++;
         if (status === 'absent') acc.absent++;
         return acc;
