@@ -132,9 +132,9 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                         <QueryIcon />
                         <span className="mx-4">AI Query Helper</span>
                     </NavLink>
-                    <NavLink to="/data-export" onClick={onClose} className={({ isActive }) => `${linkClasses} ${isActive ? activeLinkClasses : ''}`}>
+                    <NavLink to="/data-center" onClick={onClose} className={({ isActive }) => `${linkClasses} ${isActive ? activeLinkClasses : ''}`}>
                         <ArchiveIcon />
-                        <span className="mx-4">Data Export</span>
+                        <span className="mx-4">Data Center</span>
                     </NavLink>
                     <NavLink to="/how-to-use" onClick={onClose} className={({ isActive }) => `${linkClasses} ${isActive ? activeLinkClasses : ''}`}>
                         <HelpIcon />

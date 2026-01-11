@@ -31,6 +31,7 @@ import HowToUse from './pages/HowToUse';
 import UpdatePassword from './pages/UpdatePassword';
 import Analysis from './pages/Analysis';
 import FeesAnalysis from './pages/FeesAnalysis';
+import DataCenter from './pages/DataCenter';
 
 const App: React.FC = () => {
   const [session, setSession] = useState<Session | null>(null);
@@ -116,7 +117,7 @@ const App: React.FC = () => {
         <Route path="/transport" element={<Transport />} />
         <Route path="/hostel" element={<Hostel />} />
         <Route path="/query-helper" element={<QueryHelper />} />
-        <Route path="/data-export" element={<DataExport />} />
+        <Route path="/data-center" element={<DataCenter />} />
         <Route path="/generator-tools" element={<GeneratorTools />} />
         <Route path="/how-to-use" element={<HowToUse />} />
       </Route>

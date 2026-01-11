@@ -496,7 +496,7 @@ const StudentProfileModal: React.FC<StudentProfileModalProps> = ({ student: init
                         
                         <div className="lg:col-span-1 space-y-6">
                             <div className="bg-white p-6 rounded-xl shadow-md text-center">
-                                <img src={student.photo_url || `https://ui-avatars.com/api/?name=${student.name}&background=4f46e5&color=fff&size=128`} alt={student.name} className="w-32 h-32 rounded-full object-cover mx-auto border-4 border-primary-dark shadow-lg"/>
+                                <img src={student.photo_url || `https://ui-avatars.com/api/?name=${student.name}&background=e8e8e8&color=555&size=128&bold=true`} alt={student.name} className="w-32 h-32 rounded-full object-cover mx-auto border-4 border-primary-dark shadow-lg"/>
                                 <h3 className="text-2xl font-bold text-gray-900 mt-4">{student.name}</h3>
                                 <p className="text-md text-gray-600">Class: {student.class || 'N/A'}</p>
                                 <p className="text-sm text-gray-500 font-mono">Roll No: {student.roll_number || 'N/A'}</p>
