@@ -5,7 +5,7 @@ import { User } from '@supabase/supabase-js';
 import { OwnerProfile, HostelBuilding } from '../types';
 import Spinner from '../components/Spinner';
 import ImageUpload from '../components/ImageUpload';
-import { sanitizeForPath } from '../utils/textUtils';
+import { uploadImage } from '../services/githubService';
 import DeleteIcon from '../components/icons/DeleteIcon';
 import PlusIcon from '../components/icons/PlusIcon';
 
@@ -151,14 +151,11 @@ const Profile: React.FC<ProfileProps> = ({ user }) => {
       }));
   };
 
-  const getSchoolImagePath = async (fileName: string): Promise<string> => {
+  const handleUploadImage = async (file: File) => {
     if (!profile?.school_name) {
-        throw new Error("School name must be set before uploading an image.");
+        throw new Error("Please enter School Name before uploading.");
     }
-    const sanitizedSchoolName = sanitizeForPath(profile.school_name);
-    const extension = fileName.split('.').pop() || 'png';
-    const uniqueFileName = `logo_${Date.now()}.${extension}`;
-    return `${sanitizedSchoolName}/${uniqueFileName}`;
+    return await uploadImage(file, profile.school_name, user.id);
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -242,7 +239,7 @@ const Profile: React.FC<ProfileProps> = ({ user }) => {
             label="School Logo"
             currentUrl={profile?.school_image_url}
             onUrlChange={handleImageUrlChange}
-            getUploadPath={getSchoolImagePath}
+            onUpload={handleUploadImage}
         />
 
         {/* Hostel Management Section */}

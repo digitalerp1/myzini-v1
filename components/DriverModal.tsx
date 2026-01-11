@@ -1,9 +1,10 @@
+
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../services/supabase';
 import { Driver } from '../types';
 import Spinner from './Spinner';
 import ImageUpload from './ImageUpload';
-import { sanitizeForPath } from '../utils/textUtils';
+import { uploadImage } from '../services/githubService';
 
 interface DriverModalProps {
     driver: Driver | null;
@@ -66,13 +67,12 @@ const DriverModal: React.FC<DriverModalProps> = ({ driver, onClose, onSave }) =>
     const handlePhotoUrlChange = (url: string) => setFormData(prev => ({ ...prev, photo_url: url }));
     const handleVanImageUrlChange = (url: string) => setFormData(prev => ({ ...prev, van_image_url: url }));
 
-    const getImagePath = async (fileName: string, type: 'driver' | 'van'): Promise<string> => {
-        if (!schoolName) throw new Error("School name not set. Please set up the school profile first.");
-        const name = formData.name || 'unknown_driver';
-        const sanitizedSchool = sanitizeForPath(schoolName);
-        const sanitizedName = sanitizeForPath(name);
-        const ext = fileName.split('.').pop() || 'jpg';
-        return `${sanitizedSchool}/transport/${type}_${sanitizedName}_${Date.now()}.${ext}`;
+    const handleUploadImage = async (file: File) => {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user || !schoolName) {
+            throw new Error("Missing school information or authentication.");
+        }
+        return await uploadImage(file, schoolName, user.id);
     };
     
     const handleSubmit = async (e: React.FormEvent) => {
@@ -137,13 +137,13 @@ const DriverModal: React.FC<DriverModalProps> = ({ driver, onClose, onSave }) =>
                             label="Driver's Photo"
                             currentUrl={formData.photo_url}
                             onUrlChange={handlePhotoUrlChange}
-                            getUploadPath={(fileName) => getImagePath(fileName, 'driver')}
+                            onUpload={handleUploadImage}
                         />
                         <ImageUpload 
                             label="Van's Photo"
                             currentUrl={formData.van_image_url}
                             onUrlChange={handleVanImageUrlChange}
-                            getUploadPath={(fileName) => getImagePath(fileName, 'van')}
+                            onUpload={handleUploadImage}
                         />
                     </div>
 

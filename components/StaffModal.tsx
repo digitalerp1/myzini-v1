@@ -1,9 +1,10 @@
+
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../services/supabase';
 import { Staff } from '../types';
 import Spinner from './Spinner';
 import ImageUpload from './ImageUpload';
-import { sanitizeForPath } from '../utils/textUtils';
+import { uploadImage } from '../services/githubService';
 
 interface StaffModalProps {
     staff: Staff | null;
@@ -79,19 +80,12 @@ const StaffModal: React.FC<StaffModalProps> = ({ staff, onClose, onSave }) => {
         setFormData(prev => ({ ...prev, photo_url: url }));
     };
 
-    const getStaffImagePath = async (fileName: string): Promise<string> => {
-        if (!schoolName) {
-            throw new Error("School name could not be determined. Please ensure the school profile is set up.");
+    const handleUploadImage = async (file: File) => {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user || !schoolName) {
+            throw new Error("Missing school information or authentication.");
         }
-        if (!formData.name) {
-            throw new Error("Staff name must be set before uploading an image.");
-        }
-        const sanitizedSchoolName = sanitizeForPath(schoolName);
-        const sanitizedStaffName = sanitizeForPath(formData.name);
-        const extension = fileName.split('.').pop() || 'png';
-        const uniqueFileName = `staff_${sanitizedStaffName}_${Date.now()}.${extension}`;
-        
-        return `${sanitizedSchoolName}/${uniqueFileName}`;
+        return await uploadImage(file, schoolName, user.id);
     };
     
     const handleSubmit = async (e: React.FormEvent) => {
@@ -191,7 +185,7 @@ const StaffModal: React.FC<StaffModalProps> = ({ staff, onClose, onSave }) => {
                         label="Photo"
                         currentUrl={formData.photo_url}
                         onUrlChange={handlePhotoUrlChange}
-                        getUploadPath={getStaffImagePath}
+                        onUpload={handleUploadImage}
                     />
                     
                     <div className="md:col-span-2 flex items-center">

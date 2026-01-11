@@ -1,5 +1,5 @@
+
 import React, { useState } from 'react';
-import { uploadImage } from '../services/githubService';
 import Spinner from './Spinner';
 import UserCircleIcon from './icons/UserCircleIcon';
 
@@ -7,10 +7,11 @@ interface ImageUploadProps {
     label: string;
     currentUrl: string | null | undefined;
     onUrlChange: (url: string) => void;
-    getUploadPath: (fileName: string) => Promise<string>;
+    // New prop: The parent component provides the specific upload logic (passing schoolName/UID)
+    onUpload: (file: File) => Promise<string>; 
 }
 
-const MAX_SIZE_KB = 20;
+const MAX_SIZE_KB = 1024; // Increased client-side limit slightly as the API handles compression too
 
 const compressImage = (file: File): Promise<File> => {
     return new Promise((resolve, reject) => {
@@ -51,24 +52,18 @@ const compressImage = (file: File): Promise<File> => {
                             return reject(new Error('Canvas to Blob conversion failed.'));
                         }
 
-                        if (blob.size / 1024 <= MAX_SIZE_KB) {
-                            const compressedFile = new File([blob], file.name, {
-                                type: 'image/jpeg',
-                                lastModified: Date.now(),
-                            });
-                            resolve(compressedFile);
-                        } else if (quality > 0.1) {
-                            // Recursively call with lower quality
-                            attemptCompression(quality - 0.1);
-                        } else {
-                            // If even at lowest quality it's too big, reject
-                            reject(new Error(`Could not compress image under ${MAX_SIZE_KB} KB. Final size was ${(blob.size / 1024).toFixed(2)} KB.`));
-                        }
+                        // We accept slightly larger files now since the API handles it, 
+                        // but keeping some client-side optimization is good for UX.
+                        resolve(new File([blob], file.name, {
+                            type: 'image/jpeg',
+                            lastModified: Date.now(),
+                        }));
+                        
                     }, 'image/jpeg', quality);
                 };
 
-                // Start with high quality and reduce if necessary
-                attemptCompression(0.9);
+                // Start with high quality 
+                attemptCompression(0.8);
             };
             img.onerror = (error) => reject(new Error(`Image loading failed.`));
         };
@@ -76,7 +71,7 @@ const compressImage = (file: File): Promise<File> => {
     });
 };
 
-const ImageUpload: React.FC<ImageUploadProps> = ({ label, currentUrl, onUrlChange, getUploadPath }) => {
+const ImageUpload: React.FC<ImageUploadProps> = ({ label, currentUrl, onUrlChange, onUpload }) => {
     const [uploading, setUploading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [message, setMessage] = useState<string | null>(null);
@@ -87,25 +82,23 @@ const ImageUpload: React.FC<ImageUploadProps> = ({ label, currentUrl, onUrlChang
 
         setUploading(true);
         setError(null);
-        setMessage(null);
+        setMessage("Processing image...");
 
         try {
-            if (file.size / 1024 > MAX_SIZE_KB) {
-                setMessage(`Original size is ${(file.size / 1024).toFixed(1)} KB. Compressing to under ${MAX_SIZE_KB} KB...`);
+            // Compress client-side first to save bandwidth
+            if (file.size / 1024 > 500) { 
                 try {
                     file = await compressImage(file);
                 } catch (compressionError: any) {
-                    setError(`Compression failed: ${compressionError.message}`);
-                    setUploading(false);
-                    e.target.value = '';
-                    return;
+                    console.warn("Client compression failed, sending original.", compressionError);
                 }
             }
 
-            const path = await getUploadPath(file.name);
-            const newUrl = await uploadImage(file, path);
+            setMessage("Uploading to server...");
+            const newUrl = await onUpload(file); // Call the passed upload function
             onUrlChange(newUrl);
-            setMessage(null);
+            setMessage("Upload successful!");
+            setTimeout(() => setMessage(null), 3000);
         } catch (err: any) {
             setError(err.message);
             setMessage(null);

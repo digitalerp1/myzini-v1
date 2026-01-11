@@ -1,43 +1,39 @@
+
 import { supabase } from './supabase';
 
-const BUCKET_NAME = 'school_assets';
-const MAX_FILE_SIZE_KB = 20;
+const WORKER_URL = "https://apizini.teamdigitalerp.workers.dev";
 
 /**
- * Uploads an image file to Supabase Storage.
+ * Uploads an image file to the Zini Cloudflare Worker.
  * @param file The file to upload.
- * @param path The full path including the filename where the file should be stored.
+ * @param schoolName The name of the school (for folder organization).
+ * @param schoolUid The UID of the school owner.
  * @returns A promise that resolves with the public URL of the uploaded file.
  */
-export const uploadImage = async (file: File, path: string): Promise<string> => {
-    if (file.size > MAX_FILE_SIZE_KB * 1024) {
-        // This check is a safeguard. The client-side should have already compressed the image.
-        throw new Error(`File size exceeds the final limit of ${MAX_FILE_SIZE_KB} KB after compression attempts.`);
-    }
+export const uploadImage = async (file: File, schoolName: string, schoolUid: string): Promise<string> => {
+    const formData = new FormData();
+    formData.append('school_name', schoolName);
+    formData.append('school_uid', schoolUid);
+    formData.append('image', file);
 
-    const { data, error } = await supabase.storage
-        .from(BUCKET_NAME)
-        .upload(path, file, {
-            cacheControl: '3600',
-            upsert: true, // Overwrite file if it exists to handle potential name collisions
+    try {
+        const response = await fetch(WORKER_URL, {
+            method: 'POST',
+            headers: {
+                'Request-Type': 'upload_image'
+            },
+            body: formData
         });
 
-    if (error) {
-        throw new Error(`Supabase Storage Error: ${error.message}`);
+        const result = await response.json();
+
+        if (!response.ok) {
+            throw new Error(result.error || "Failed to upload image to server.");
+        }
+
+        return result.public_url;
+    } catch (error: any) {
+        console.error("Upload Error:", error);
+        throw new Error(error.message || "Network error during upload.");
     }
-
-    if (!data) {
-        throw new Error("Upload successful, but no data returned from Supabase.");
-    }
-
-    const { data: { publicUrl } } = supabase.storage
-        .from(BUCKET_NAME)
-        .getPublicUrl(path);
-
-    if (!publicUrl) {
-        throw new Error("Could not get public URL for the uploaded file.");
-    }
-
-    // Append a timestamp to the URL to bypass cache after an update (upsert)
-    return `${publicUrl}?t=${new Date().getTime()}`;
 };

@@ -4,7 +4,7 @@ import { supabase } from '../services/supabase';
 import { Student, Class, HostelBuilding, StudentHostelData } from '../types';
 import Spinner from './Spinner';
 import ImageUpload from './ImageUpload';
-import { sanitizeForPath } from '../utils/textUtils';
+import { uploadImage } from '../services/githubService';
 
 interface StudentModalProps {
     student: Student | null;
@@ -174,20 +174,12 @@ const StudentModal: React.FC<StudentModalProps> = ({ student, classes, onClose, 
         setFormData(prev => ({ ...prev, photo_url: url }));
     };
 
-    const getStudentImagePath = async (fileName: string): Promise<string> => {
-        if (!schoolName) {
-            throw new Error("School name could not be determined. Please set up the school profile first.");
+    const handleUploadImage = async (file: File) => {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user || !schoolName) {
+            throw new Error("Missing school information or authentication.");
         }
-        if (!formData.name) {
-            throw new Error("Student name must be set before uploading an image.");
-        }
-        
-        const sanitizedSchoolName = sanitizeForPath(schoolName);
-        const sanitizedStudentName = sanitizeForPath(formData.name);
-        const extension = fileName.split('.').pop() || 'png';
-        const uniqueFileName = `student_${sanitizedStudentName}_${Date.now()}.${extension}`;
-
-        return `${sanitizedSchoolName}/${uniqueFileName}`;
+        return await uploadImage(file, schoolName, user.id);
     };
     
     const handleSubmit = async (e: React.FormEvent) => {
@@ -222,12 +214,7 @@ const StudentModal: React.FC<StudentModalProps> = ({ student, classes, onClose, 
                 fee_records: existingHostelData?.fee_records || []
             };
             dataToSave = { ...dataToSave, hostel_data: newHostelData };
-        } else {
-            // If room details cleared, mark inactive? Or just leave it?
-            // If editing and clearing room, we should probably mark inactive or ask user.
-            // For now, if room_no is empty, we don't update hostel_data significantly unless explicitly handling exit in other flows.
-            // But if it's a new student without room, hostel_data remains undefined.
-        }
+        } 
 
         if (student) { // Editing existing student
             if (!dataToSave.password || dataToSave.password === '') {
@@ -396,7 +383,7 @@ const StudentModal: React.FC<StudentModalProps> = ({ student, classes, onClose, 
                         label="Photo"
                         currentUrl={formData.photo_url}
                         onUrlChange={handlePhotoUrlChange}
-                        getUploadPath={getStudentImagePath}
+                        onUpload={handleUploadImage}
                     />
 
                     <div className="md:col-span-2 flex justify-end items-center gap-4 mt-4">
