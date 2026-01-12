@@ -16,6 +16,13 @@ interface EntityConfig {
 
 const entities: EntityConfig[] = [
     { 
+        table: 'owner', 
+        label: 'School Profile', 
+        description: 'School details, address, and configuration.', 
+        fields: ['school_name', 'mobile_number', 'address', 'hostel_managment'],
+        example: { school_name: "My School", mobile_number: "9876543210" }
+    },
+    { 
         table: 'students', 
         label: 'Students', 
         description: 'Student profiles, roll numbers, and monthly fee records.', 
@@ -105,6 +112,33 @@ const DataCenter: React.FC = () => {
         setTimeout(() => setMessage(null), 8000);
     };
 
+    // --- Helper Functions ---
+
+    const sanitizeValue = (value: any) => {
+        // Convert empty strings to null to prevent UUID syntax errors in Postgres
+        if (value === "") return null;
+        if (value === "undefined") return null;
+        return value;
+    };
+
+    const cleanRecord = (record: any, userUid: string) => {
+        const cleaned: any = {};
+        for (const key in record) {
+            // Skip internal Supabase fields if necessary, but we usually want to keep 'id' for restore
+            if (key === 'created_at') continue; 
+            
+            // Explicitly set UID to current user to ensure ownership
+            if (key === 'uid') {
+                cleaned[key] = userUid;
+            } else {
+                cleaned[key] = sanitizeValue(record[key]);
+            }
+        }
+        // Ensure UID is set even if missing in source
+        cleaned['uid'] = userUid;
+        return cleaned;
+    };
+
     // --- Bulk Operations ---
 
     const handleBulkExport = async () => {
@@ -115,9 +149,10 @@ const DataCenter: React.FC = () => {
 
             const exportData: any = {};
             for (const entity of entities) {
+                // Fetch data including 'id' to allow for restoration
                 const { data, error } = await supabase.from(entity.table).select('*').eq('uid', user.id);
                 if (!error && data) {
-                    exportData[entity.table] = data.map(({ uid, id, created_at, ...rest }) => rest);
+                    exportData[entity.table] = data;
                 }
             }
 
@@ -133,11 +168,14 @@ const DataCenter: React.FC = () => {
     const handleBulkImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
-        if (!window.confirm("CRITICAL: Bulk import will add records to multiple tables. Continue?")) {
+        
+        if (!window.confirm("CRITICAL: Bulk import will OVERWRITE existing records if IDs match. Are you sure?")) {
             e.target.value = ''; return;
         }
 
         setLoading(true);
+        setMessage({ type: 'success', text: 'Processing file...' });
+
         try {
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) throw new Error("Auth failed.");
@@ -147,30 +185,43 @@ const DataCenter: React.FC = () => {
             let summary = "";
 
             const processTable = async (tableName: string, rows: any[]) => {
-                const dataToInsert = rows.map(item => {
-                    const { id, uid, created_at, ...rest } = item;
-                    return { ...rest, uid: user.id };
-                });
-                const { error } = await supabase.from(tableName).insert(dataToInsert);
-                if (error) throw new Error(`Error in ${tableName}: ${error.message}`);
-                return dataToInsert.length;
+                if (!rows || rows.length === 0) return 0;
+
+                // 1. Sanitize Data
+                const dataToUpsert = rows.map(item => cleanRecord(item, user.id));
+
+                // 2. Perform Upsert (Update if ID exists, Insert if new)
+                // We use upsert to handle potential duplicates gracefully and allow updating existing records
+                const { error } = await supabase.from(tableName).upsert(dataToUpsert);
+                
+                if (error) {
+                    console.error(`Error importing ${tableName}:`, error);
+                    throw new Error(`Error in ${tableName}: ${error.message}`);
+                }
+                return dataToUpsert.length;
             };
 
             if (Array.isArray(jsonData)) {
-                const count = await processTable('students', jsonData); // Default assumption
+                // Fallback for single array (assume students if not specified, or user error)
+                const count = await processTable('students', jsonData); 
                 summary = `Imported ${count} records into Students.`;
             } else {
-                for (const tableKey in jsonData) {
-                    const rows = jsonData[tableKey];
-                    if (Array.isArray(rows) && rows.length > 0) {
-                        const count = await processTable(tableKey, rows);
-                        summary += `[${tableKey}: ${count}] `;
+                // Priority order to maintain relationships (Parents first)
+                const priorityTables = ['owner', 'fees_types', 'classes', 'subjects', 'students', 'staff'];
+                const otherTables = Object.keys(jsonData).filter(t => !priorityTables.includes(t));
+                const allTables = [...priorityTables, ...otherTables];
+
+                for (const tableKey of allTables) {
+                    if (jsonData[tableKey]) {
+                        const count = await processTable(tableKey, jsonData[tableKey]);
+                        if (count > 0) summary += `[${tableKey}: ${count}] `;
                     }
                 }
             }
-            showMessage('success', `Bulk Import Complete: ${summary}`);
+            showMessage('success', `Bulk Restore Complete: ${summary}`);
         } catch (err: any) {
-            showMessage('error', `Import Interrupted: ${err.message}`);
+            console.error(err);
+            showMessage('error', `Import Failed: ${err.message}`);
         } finally {
             setLoading(false);
             e.target.value = '';
@@ -193,8 +244,7 @@ const DataCenter: React.FC = () => {
                 return;
             }
 
-            const cleanData = data.map(({ uid, id, created_at, ...rest }) => rest);
-            downloadJSON(cleanData, `${label.toLowerCase().replace(/\s/g, '_')}_export`);
+            downloadJSON(data, `${label.toLowerCase().replace(/\s/g, '_')}_export`);
             showMessage('success', `${label} exported successfully.`);
         } catch (err: any) {
             showMessage('error', `Export failed: ${err.message}`);
@@ -207,7 +257,7 @@ const DataCenter: React.FC = () => {
         const file = e.target.files?.[0];
         if (!file) return;
 
-        if (!window.confirm(`Importing into ${label}. This adds new records. Continue?`)) {
+        if (!window.confirm(`Importing into ${label}. This uses 'Upsert' logic (Updates if ID exists). Continue?`)) {
             e.target.value = ''; return;
         }
 
@@ -221,15 +271,12 @@ const DataCenter: React.FC = () => {
 
             if (!Array.isArray(jsonData)) throw new Error("File must contain a JSON array of records.");
 
-            const dataToInsert = jsonData.map(item => {
-                const { id, uid, created_at, ...rest } = item;
-                return { ...rest, uid: user.id };
-            });
+            const dataToUpsert = jsonData.map(item => cleanRecord(item, user.id));
 
-            const { error } = await supabase.from(table).insert(dataToInsert);
+            const { error } = await supabase.from(table).upsert(dataToUpsert);
             if (error) throw error;
 
-            showMessage('success', `Successfully imported ${dataToInsert.length} records into ${label}.`);
+            showMessage('success', `Successfully imported/updated ${dataToUpsert.length} records into ${label}.`);
         } catch (err: any) {
             showMessage('error', `Import failed: ${err.message}`);
         } finally {
@@ -273,7 +320,7 @@ const DataCenter: React.FC = () => {
                             <input type="file" accept=".json" onChange={handleBulkImport} className="absolute inset-0 opacity-0 cursor-pointer z-20" disabled={loading} />
                             <button disabled={loading} className="btn-bulk bg-indigo-600 text-white hover:bg-indigo-500 border border-indigo-500">
                                 <PlusIcon className="w-5 h-5" />
-                                Restore Full Backup
+                                Restore / Import Backup
                             </button>
                         </div>
                     </div>
