@@ -124,18 +124,18 @@ const DataCenter: React.FC = () => {
     const cleanRecord = (record: any, userUid: string) => {
         const cleaned: any = {};
         for (const key in record) {
-            // Skip internal Supabase fields if necessary, but we usually want to keep 'id' for restore
-            if (key === 'created_at') continue; 
+            // 1. Skip 'created_at' to allow Postgres to generate a new timestamp if inserting
+            // 2. Skip 'uid' from the file, we will inject the SESSION uid
+            if (key === 'created_at' || key === 'uid') continue; 
             
-            // Explicitly set UID to current user to ensure ownership
-            if (key === 'uid') {
-                cleaned[key] = userUid;
-            } else {
-                cleaned[key] = sanitizeValue(record[key]);
-            }
+            cleaned[key] = sanitizeValue(record[key]);
         }
-        // Ensure UID is set even if missing in source
+        
+        // --- SECURITY ENFORCEMENT ---
+        // Forcefully set the UID to the currently logged-in user.
+        // This ensures Row Level Security (RLS) policies allow the insert.
         cleaned['uid'] = userUid;
+        
         return cleaned;
     };
 
@@ -149,7 +149,7 @@ const DataCenter: React.FC = () => {
 
             const exportData: any = {};
             for (const entity of entities) {
-                // Fetch data including 'id' to allow for restoration
+                // Fetch data strictly for the current user
                 const { data, error } = await supabase.from(entity.table).select('*').eq('uid', user.id);
                 if (!error && data) {
                     exportData[entity.table] = data;
@@ -169,12 +169,12 @@ const DataCenter: React.FC = () => {
         const file = e.target.files?.[0];
         if (!file) return;
         
-        if (!window.confirm("CRITICAL: Bulk import will OVERWRITE existing records if IDs match. Are you sure?")) {
+        if (!window.confirm("CRITICAL: Bulk import will update records if IDs match, or add new ones. Your active session ID will be assigned to all data. Continue?")) {
             e.target.value = ''; return;
         }
 
         setLoading(true);
-        setMessage({ type: 'success', text: 'Processing file...' });
+        setMessage({ type: 'success', text: 'Processing file and injecting session data...' });
 
         try {
             const { data: { user } } = await supabase.auth.getUser();
@@ -187,11 +187,10 @@ const DataCenter: React.FC = () => {
             const processTable = async (tableName: string, rows: any[]) => {
                 if (!rows || rows.length === 0) return 0;
 
-                // 1. Sanitize Data
+                // Sanitize and Inject UID
                 const dataToUpsert = rows.map(item => cleanRecord(item, user.id));
 
-                // 2. Perform Upsert (Update if ID exists, Insert if new)
-                // We use upsert to handle potential duplicates gracefully and allow updating existing records
+                // Perform Upsert
                 const { error } = await supabase.from(tableName).upsert(dataToUpsert);
                 
                 if (error) {
@@ -202,7 +201,7 @@ const DataCenter: React.FC = () => {
             };
 
             if (Array.isArray(jsonData)) {
-                // Fallback for single array (assume students if not specified, or user error)
+                // Fallback for single array (assume students if not specified)
                 const count = await processTable('students', jsonData); 
                 summary = `Imported ${count} records into Students.`;
             } else {
@@ -257,10 +256,6 @@ const DataCenter: React.FC = () => {
         const file = e.target.files?.[0];
         if (!file) return;
 
-        if (!window.confirm(`Importing into ${label}. This uses 'Upsert' logic (Updates if ID exists). Continue?`)) {
-            e.target.value = ''; return;
-        }
-
         setImportingTable(table);
         try {
             const { data: { user } } = await supabase.auth.getUser();
@@ -271,6 +266,7 @@ const DataCenter: React.FC = () => {
 
             if (!Array.isArray(jsonData)) throw new Error("File must contain a JSON array of records.");
 
+            // Inject UID into every record
             const dataToUpsert = jsonData.map(item => cleanRecord(item, user.id));
 
             const { error } = await supabase.from(table).upsert(dataToUpsert);
@@ -307,7 +303,7 @@ const DataCenter: React.FC = () => {
                 <div className="relative z-10">
                     <h1 className="text-4xl font-black mb-3">Data Center</h1>
                     <p className="text-indigo-200 text-lg mb-8 max-w-2xl">
-                        Manage your school's database directly. Perform bulk backups or granular updates for specific entities like Students, Staff, and Fees.
+                        Centralized backup and restore. All imports are securely mapped to your current session ID automatically.
                     </p>
                     
                     <div className="flex flex-wrap gap-4">
@@ -346,7 +342,7 @@ const DataCenter: React.FC = () => {
                                         onClick={() => setActiveDoc(e.table)} 
                                         className="text-xs text-indigo-500 font-semibold hover:text-indigo-700 bg-indigo-50 px-2 py-1 rounded"
                                     >
-                                        Schema ?
+                                        Structure ?
                                     </button>
                                 </div>
                                 <p className="text-xs text-gray-500 mb-6 min-h-[32px]">{e.description}</p>
@@ -395,6 +391,9 @@ const DataCenter: React.FC = () => {
                             </div>
                             
                             <div className="space-y-4">
+                                <div className="bg-amber-50 p-3 rounded border border-amber-200 text-xs text-amber-800">
+                                    <strong>Important:</strong> Do not include the <code>uid</code> field in your JSON. The system automatically injects your active Session ID to ensure data security.
+                                </div>
                                 <div>
                                     <p className="text-xs font-bold text-gray-500 uppercase mb-2">Required Fields</p>
                                     <ul className="text-xs text-gray-700 space-y-1 bg-white p-3 rounded border border-gray-200">
@@ -415,7 +414,7 @@ const DataCenter: React.FC = () => {
                         </div>
                     ) : (
                         <div className="text-center py-12 text-gray-400">
-                            <p className="text-sm">Select 'Schema ?' on any card to view the required JSON format for importing data.</p>
+                            <p className="text-sm">Select 'Structure ?' on any card to view the required JSON format and data types.</p>
                         </div>
                     )}
                 </div>
