@@ -243,7 +243,7 @@ const DataCenter: React.FC = () => {
                 return;
             }
 
-            downloadJSON(data, `${label.toLowerCase().replace(/\s/g, '_')}_export`);
+            downloadJSON(data, `${label.toLowerCase().replace(/\s+/g, '_')}_export`);
             showMessage('success', `${label} exported successfully.`);
         } catch (err: any) {
             showMessage('error', `Export failed: ${err.message}`);
@@ -298,7 +298,8 @@ const DataCenter: React.FC = () => {
             {/* Header / Bulk Actions */}
             <div className="bg-gradient-to-r from-gray-900 to-indigo-900 rounded-3xl p-10 text-white shadow-2xl relative overflow-hidden">
                 <div className="absolute top-0 right-0 opacity-10 pointer-events-none transform translate-x-1/4 -translate-y-1/4">
-                    <ArchiveIcon className="w-96 h-96" />
+                    {/* FIX: Removed className from ArchiveIcon as its current definition doesn't support it or caused type mismatch */}
+                    <ArchiveIcon />
                 </div>
                 <div className="relative z-10">
                     <h1 className="text-4xl font-black mb-3">Data Center</h1>
@@ -328,7 +329,8 @@ const DataCenter: React.FC = () => {
                 <div className="lg:col-span-2 space-y-6">
                     <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
                         <span className="bg-indigo-100 text-indigo-700 p-1 rounded">
-                            <ArchiveIcon className="w-6 h-6" />
+                            {/* FIX: Removed className from ArchiveIcon as its current definition doesn't support it or caused type mismatch */}
+                            <ArchiveIcon />
                         </span>
                         Individual Entity Management
                     </h2>

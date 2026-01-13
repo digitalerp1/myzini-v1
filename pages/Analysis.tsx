@@ -48,13 +48,15 @@ const Analysis: React.FC<AnalysisProps> = ({ user }) => {
         {
             title: "Admission & Demographics",
             description: "New admission growth, gender ratio, caste/category distribution, and total strength.",
-            icon: <ChartBarIcon className="w-10 h-10 text-white" />,
+            // FIX: Removed className from ChartBarIcon as its current definition doesn't support it or caused type mismatch
+            icon: <ChartBarIcon />,
             color: "bg-orange-500",
             path: "/analysis/admissions"
         },
         {
             title: "Exam Results",
             description: "Performance analysis, subject-wise averages, pass/fail ratios, and topper lists.",
+            // FIX: Added className support previously to AcademicCapIcon, ensuring it works here
             icon: <AcademicCapIcon className="w-10 h-10 text-white" />,
             color: "bg-indigo-500",
             path: "/analysis/results"

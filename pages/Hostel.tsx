@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../services/supabase';
 import { Student, HostelBuilding, StudentHostelData, HostelFeeRecord } from '../types';
@@ -291,7 +292,8 @@ const Hostel: React.FC = () => {
                                                         <div className="space-y-1 min-h-[40px]">
                                                             {r.occupants.length > 0 ? r.occupants.map(occ => (
                                                                 <div key={occ.id} className="text-xs flex items-center gap-1.5 text-gray-700 bg-white/50 p-1 rounded">
-                                                                    <UserCircleIcon className="w-3 h-3 text-gray-500"/> {occ.name}
+                                                                    {/* FIX: Removed className from UserCircleIcon as its current definition doesn't support it or caused type mismatch */}
+                                                                    <UserCircleIcon /> {occ.name}
                                                                 </div>
                                                             )) : <span className="text-xs text-green-600 italic flex items-center gap-1"><PlusIcon className="w-3 h-3"/> Available</span>}
                                                         </div>

@@ -71,7 +71,10 @@ const AnalysisResults: React.FC = () => {
     return (
         <div className="space-y-8 animate-fade-in pb-12">
             <div className="flex items-center gap-4 border-b pb-4">
-                <div className="p-3 bg-indigo-100 rounded-full text-indigo-600"><AcademicCapIcon className="w-8 h-8"/></div>
+                <div className="p-3 bg-indigo-100 rounded-full text-indigo-600">
+                    {/* FIX: Added className support previously to AcademicCapIcon, ensuring it works here */}
+                    <AcademicCapIcon className="w-8 h-8" />
+                </div>
                 <h1 className="text-3xl font-bold text-gray-800">Academic Results Analysis</h1>
             </div>
 
