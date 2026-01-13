@@ -184,45 +184,103 @@ const HowToUse: React.FC = () => {
                                 <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>
                             </div>
                             <div>
-                                <h2 className="text-2xl font-bold text-gray-800">Enable Student Login</h2>
-                                <p className="text-gray-600">You must run this SQL code in your Supabase SQL Editor to allow students to log in.</p>
+                                <h2 className="text-2xl font-bold text-gray-800">Secure Student Login System</h2>
+                                <p className="text-gray-600">This Advanced SQL function ensures that students ONLY see their own data. It aggregates Profile, Fees, Exams, and Attendance into a single secure package.</p>
                             </div>
                         </div>
 
-                        <div className="bg-gray-900 rounded-lg p-6 overflow-x-auto border border-gray-700">
+                        <div className="bg-gray-900 rounded-lg p-6 overflow-x-auto border border-gray-700 shadow-inner">
                             <div className="flex justify-between items-center mb-2">
-                                <span className="text-xs font-mono text-green-400">PostgreSQL Function</span>
+                                <span className="text-xs font-mono text-green-400">PostgreSQL Function (Secure Aggregation)</span>
                                 <span className="text-xs text-gray-500">Copy & Paste into Supabase SQL Editor</span>
                             </div>
-                            <pre className="text-sm font-mono text-gray-300 whitespace-pre-wrap">
-{`-- Function to securely verify student login credentials
-CREATE OR REPLACE FUNCTION student_login(phone text, pass text)
+                            <pre className="text-xs font-mono text-gray-300 whitespace-pre-wrap leading-relaxed">
+{`-- Function: student_login_secure
+-- Description: Authenticates a student and returns aggregated, secure data including
+--              Profile, School Info, Exam Results, and Personal Attendance Records.
+--              Handles multiple students (siblings) with the same mobile/password.
+
+CREATE OR REPLACE FUNCTION student_login_secure(phone_input text, pass_input text)
 RETURNS json AS $$
 DECLARE
-  student_record json;
+    result_data json;
 BEGIN
-  -- Select the student record matching mobile and password
-  -- NOTE: Ensure your 'students' table has 'mobile' and 'password' columns
-  SELECT row_to_json(s) INTO student_record
-  FROM students s
-  WHERE s.mobile = phone AND s.password = pass
-  LIMIT 1;
+    SELECT json_agg(
+        json_build_object(
+            'student_profile', s,
+            
+            -- Fetch School Owner Details (Public Info only)
+            'school_info', (
+                SELECT json_build_object(
+                    'school_name', o.school_name,
+                    'address', o.address,
+                    'principal_name', o.principal_name,
+                    'school_image_url', o.school_image_url,
+                    'mobile', o.mobile_number,
+                    'website', o.website
+                )
+                FROM owner o WHERE o.uid = s.uid
+            ),
+            
+            -- Fetch Exam Results specific to this student's Class and Roll Number
+            'exam_results', (
+                SELECT COALESCE(json_agg(r), '[]'::json)
+                FROM exam_results r
+                WHERE r.uid = s.uid
+                AND r.class = s.class
+                AND r.roll_number = s.roll_number
+            ),
+            
+            -- Fetch Attendance: ONLY records where this student is marked Present or Absent.
+            -- This strictly prevents seeing other students' attendance data.
+            'attendance_records', (
+                SELECT COALESCE(json_agg(
+                    json_build_object(
+                        'date', a.date,
+                        'status', CASE
+                            -- Check if Roll Number is in the comma-separated list
+                            WHEN s.roll_number = ANY(string_to_array(a.present, ',')) THEN 'Present'
+                            WHEN s.roll_number = ANY(string_to_array(a.absent, ',')) THEN 'Absent'
+                            ELSE 'Holiday'
+                        END
+                    )
+                ), '[]'::json)
+                FROM attendance a
+                JOIN classes c ON a.class_id = c.id
+                WHERE c.uid = s.uid
+                AND c.class_name = s.class
+                AND (
+                    -- Security Check: Only return row if student is mentioned
+                    s.roll_number = ANY(string_to_array(a.present, ','))
+                    OR
+                    s.roll_number = ANY(string_to_array(a.absent, ','))
+                )
+                -- Optional: Limit to current year to optimize size
+                AND a.date >= (EXTRACT(YEAR FROM CURRENT_DATE) || '-01-01')
+            )
+        )
+    ) INTO result_data
+    FROM students s
+    WHERE s.mobile = phone_input AND s.password = pass_input;
 
-  RETURN student_record;
+    RETURN result_data;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;`}
                             </pre>
                         </div>
                         
-                        <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 text-sm text-blue-800">
-                            <h4 className="font-bold mb-2">How to apply this?</h4>
-                            <ol className="list-decimal list-inside space-y-1">
-                                <li>Go to your Supabase Project Dashboard.</li>
+                        <div className="bg-blue-50 p-6 rounded-lg border border-blue-100 text-sm text-blue-800 mt-6">
+                            <h4 className="font-bold mb-3 text-lg">Setup Instructions</h4>
+                            <ol className="list-decimal list-inside space-y-2">
+                                <li>Open your <strong>Supabase Dashboard</strong> and navigate to your project.</li>
                                 <li>Click on the <strong>SQL Editor</strong> icon in the left sidebar.</li>
-                                <li>Click "New Query".</li>
-                                <li>Paste the code block above into the editor.</li>
-                                <li>Click <strong>Run</strong>.</li>
-                                <li>Once successful, the "Student Login" feature on the login page will work immediately.</li>
+                                <li>Click <strong>New Query</strong> to open a blank editor.</li>
+                                <li><strong>Copy</strong> the entire code block above and paste it into the editor.</li>
+                                <li>Click the <strong>Run</strong> button (bottom right).</li>
+                                <li>
+                                    <span className="font-bold text-blue-700">Verification:</span> If successful, the text "Success" or "No rows returned" will appear.
+                                    The login page will now automatically detect this function and serve secure data.
+                                </li>
                             </ol>
                         </div>
                     </div>

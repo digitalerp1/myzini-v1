@@ -115,17 +115,18 @@ const Login: React.FC<LoginProps> = ({ onStudentLogin }) => {
         setMessage(null);
 
         try {
-            // Call the database function to verify student credentials
-            const { data, error } = await supabase.rpc('student_login', {
-                phone: mobile,
-                pass: studentPass
+            // Updated to use the new SECURE function which returns aggregated data
+            const { data, error } = await supabase.rpc('student_login_secure', {
+                phone_input: mobile,
+                pass_input: studentPass
             });
 
             if (error) throw error;
 
-            if (data) {
+            if (data && Array.isArray(data) && data.length > 0) {
                 // Login successful
                 if (onStudentLogin) {
+                    // Pass the full array of students (to handle siblings)
                     onStudentLogin(data);
                 }
             } else {
