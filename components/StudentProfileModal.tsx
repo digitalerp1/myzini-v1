@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../services/supabase';
 import { Student, Class, OtherFee, StudentHostelData, HostelFeeRecord } from '../types';
@@ -334,7 +335,7 @@ const StudentProfileModal: React.FC<StudentProfileModalProps> = ({ student: init
     const finalTotalPaid = totalPaid + otherFeesSummary.paid;
     const finalTotalDues = totalDues + otherFeesSummary.dues + (student.previous_dues || 0);
 
-    // FIX: Define accumulator type explicitly to avoid 'unknown' errors when accessing properties
+    // FIX: Explicitly typing the accumulator to avoid unknown type errors on line 556 and 557
     const attendanceSummary = Array.from(attendanceStatus.values()).reduce((acc: { present: number; absent: number }, status: 'present' | 'absent') => {
         if (status === 'present') acc.present++;
         if (status === 'absent') acc.absent++;
