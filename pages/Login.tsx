@@ -1,8 +1,13 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../services/supabase';
 import Spinner from '../components/Spinner';
 
-type LoginView = 'signIn' | 'signUp' | 'magicLink' | 'forgotPassword';
+type LoginView = 'signIn' | 'signUp' | 'magicLink' | 'forgotPassword' | 'studentLogin';
+
+interface LoginProps {
+    onStudentLogin?: (studentData: any) => void;
+}
 
 // Add type definition for window.turnstile
 declare global {
@@ -11,11 +16,16 @@ declare global {
     }
 }
 
-const Login: React.FC = () => {
+const Login: React.FC<LoginProps> = ({ onStudentLogin }) => {
     const [view, setView] = useState<LoginView>('signIn');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
+    
+    // Student Login State
+    const [mobile, setMobile] = useState('');
+    const [studentPass, setStudentPass] = useState('');
+
     const [loading, setLoading] = useState(false);
     const [message, setMessage] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
     
@@ -27,9 +37,10 @@ const Login: React.FC = () => {
         setEmail('');
         setPassword('');
         setConfirmPassword('');
+        setMobile('');
+        setStudentPass('');
         setMessage(null);
         setCaptchaToken('');
-        // We rely on useEffect to re-render widget on view change
     };
 
     const handleViewChange = (newView: LoginView) => {
@@ -39,11 +50,10 @@ const Login: React.FC = () => {
 
     // Initialize Turnstile when view changes
     useEffect(() => {
-        setCaptchaToken(''); // Reset token on view change
+        setCaptchaToken(''); 
         
         const renderWidget = () => {
             if (window.turnstile) {
-                // If a widget already exists, remove it first to prevent duplicates or errors
                 if (turnstileWidgetId.current) {
                     try {
                         window.turnstile.remove(turnstileWidgetId.current);
@@ -69,16 +79,11 @@ const Login: React.FC = () => {
             }
         };
 
-        // Short delay to ensure DOM element exists
         const timer = setTimeout(renderWidget, 100);
-
         return () => clearTimeout(timer);
     }, [view]);
 
     const getRedirectUrl = () => {
-        // Dynamic redirect URL based on current origin.
-        // This ensures compatibility with both localhost and deployed environments (Vercel, Custom Domain).
-        // IMPORTANT: Ensure this URL (and localhost) is added to Supabase Authentication -> URL Configuration -> Redirect URLs.
         return window.location.origin;
     };
 
@@ -86,16 +91,11 @@ const Login: React.FC = () => {
         setLoading(true);
         try {
             const redirectUrl = getRedirectUrl();
-            console.log("Initiating Google Login with redirect:", redirectUrl);
-
             const { error } = await supabase.auth.signInWithOAuth({
                 provider: 'google',
                 options: {
                     redirectTo: redirectUrl,
-                    queryParams: {
-                        access_type: 'offline',
-                        prompt: 'consent',
-                    },
+                    queryParams: { access_type: 'offline', prompt: 'consent' },
                 },
             });
 
@@ -105,6 +105,36 @@ const Login: React.FC = () => {
             }
         } catch (err: any) {
             setMessage({ type: 'error', text: err.message || 'An unexpected error occurred.' });
+            setLoading(false);
+        }
+    };
+
+    const handleStudentSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setLoading(true);
+        setMessage(null);
+
+        try {
+            // Call the database function to verify student credentials
+            const { data, error } = await supabase.rpc('student_login', {
+                phone: mobile,
+                pass: studentPass
+            });
+
+            if (error) throw error;
+
+            if (data) {
+                // Login successful
+                if (onStudentLogin) {
+                    onStudentLogin(data);
+                }
+            } else {
+                setMessage({ type: 'error', text: 'Invalid mobile number or password.' });
+            }
+        } catch (err: any) {
+            console.error("Login Error:", err);
+            setMessage({ type: 'error', text: 'Login failed. Please check your credentials or contact school administration.' });
+        } finally {
             setLoading(false);
         }
     };
@@ -121,14 +151,11 @@ const Login: React.FC = () => {
         const { error } = await supabase.auth.signInWithPassword({
             email,
             password,
-            options: {
-                captchaToken,
-            }
+            options: { captchaToken }
         });
 
         if (error) {
             setMessage({ type: 'error', text: error.message });
-            // Reset captcha on error
             if (window.turnstile) window.turnstile.reset(turnstileWidgetId.current);
             setCaptchaToken('');
             setLoading(false);
@@ -151,10 +178,7 @@ const Login: React.FC = () => {
         const { error } = await supabase.auth.signUp({
             email,
             password,
-            options: {
-                emailRedirectTo: getRedirectUrl(),
-                captchaToken,
-            }
+            options: { emailRedirectTo: getRedirectUrl(), captchaToken }
         });
 
         if (error) {
@@ -178,10 +202,7 @@ const Login: React.FC = () => {
 
         const { error } = await supabase.auth.signInWithOtp({
             email,
-            options: {
-                emailRedirectTo: getRedirectUrl(),
-                captchaToken,
-            },
+            options: { emailRedirectTo: getRedirectUrl(), captchaToken },
         });
 
         if (error) {
@@ -228,6 +249,43 @@ const Login: React.FC = () => {
 
     const renderForm = () => {
         switch (view) {
+            case 'studentLogin':
+                return (
+                    <form onSubmit={handleStudentSubmit} className="space-y-6">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700">Mobile Number</label>
+                            <input 
+                                type="tel" 
+                                required 
+                                className="input-field" 
+                                placeholder="Enter registered mobile" 
+                                value={mobile} 
+                                onChange={(e) => setMobile(e.target.value)} 
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700">Password</label>
+                            <input 
+                                type="password" 
+                                required 
+                                className="input-field" 
+                                placeholder="Enter password" 
+                                value={studentPass} 
+                                onChange={(e) => setStudentPass(e.target.value)} 
+                            />
+                        </div>
+                        
+                        <button type="submit" disabled={loading} className="w-full btn-submit bg-green-600 hover:bg-green-700">
+                            {loading ? <Spinner size="5" /> : 'Student Login'}
+                        </button>
+                        
+                        <div className="text-center text-sm">
+                            <button type="button" onClick={() => handleViewChange('signIn')} className="text-primary font-semibold hover:underline">
+                                &larr; Back to Admin Login
+                            </button>
+                        </div>
+                    </form>
+                );
             case 'signUp':
                 return (
                     <form onSubmit={handleSignUp} className="space-y-6">
@@ -325,9 +383,16 @@ const Login: React.FC = () => {
                             {loading ? <Spinner size="5" /> : 'Sign In'}
                         </button>
                         
-                        <div className="text-center text-sm">
-                            <span className="text-gray-500">Don't have an account? </span>
-                            <button type="button" onClick={() => handleViewChange('signUp')} className="text-primary font-semibold hover:underline">Sign Up</button>
+                        <div className="text-center space-y-4">
+                            <div className="text-sm">
+                                <span className="text-gray-500">Don't have an account? </span>
+                                <button type="button" onClick={() => handleViewChange('signUp')} className="text-primary font-semibold hover:underline">Sign Up</button>
+                            </div>
+                            <div className="border-t pt-4">
+                                <button type="button" onClick={() => handleViewChange('studentLogin')} className="text-green-600 font-bold hover:text-green-700 bg-green-50 px-4 py-2 rounded-full border border-green-200 shadow-sm transition-all hover:shadow-md">
+                                    👨‍🎓 Student Login
+                                </button>
+                            </div>
                         </div>
                     </form>
                 );
@@ -339,6 +404,7 @@ const Login: React.FC = () => {
             case 'signUp': return 'Create Account';
             case 'magicLink': return 'Magic Link Login';
             case 'forgotPassword': return 'Reset Password';
+            case 'studentLogin': return 'Student Portal';
             default: return 'Welcome Back!';
         }
     };
@@ -347,11 +413,14 @@ const Login: React.FC = () => {
         <div className="min-h-screen bg-light-bg flex items-center justify-center p-4 relative">
             <div className="w-full max-w-5xl flex rounded-2xl shadow-2xl overflow-hidden bg-white relative z-10">
                 {/* Branding Panel */}
-                <div className="w-1/2 bg-primary p-12 text-white hidden md:flex flex-col justify-between">
+                <div className={`w-1/2 p-12 text-white hidden md:flex flex-col justify-between transition-colors duration-500 ${view === 'studentLogin' ? 'bg-green-600' : 'bg-primary'}`}>
                     <div>
                         <h1 className="text-4xl font-extrabold tracking-tight">My Zini</h1>
                         <p className="mt-4 text-indigo-100 opacity-90">
-                            The complete school management solution. Streamline operations, empower educators, and engage students like never before.
+                            {view === 'studentLogin' 
+                                ? "Welcome to the Student Portal. Access your attendance, results, and fee records instantly."
+                                : "The complete school management solution. Streamline operations, empower educators, and engage students."
+                            }
                         </p>
                     </div>
                     <div className="text-sm opacity-70">
@@ -361,7 +430,7 @@ const Login: React.FC = () => {
 
                 {/* Form Panel */}
                 <div className="w-full md:w-1/2 p-8 sm:p-12 flex flex-col justify-center">
-                    <h2 className="text-3xl font-bold text-gray-800 mb-6 text-center">
+                    <h2 className={`text-3xl font-bold mb-6 text-center ${view === 'studentLogin' ? 'text-green-700' : 'text-gray-800'}`}>
                         {getTitle()}
                     </h2>
                     

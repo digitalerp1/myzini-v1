@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 
 const HowToUse: React.FC = () => {
-    const [activeTab, setActiveTab] = useState<'start' | 'forms' | 'features' | 'faq'>('start');
+    const [activeTab, setActiveTab] = useState<'start' | 'forms' | 'features' | 'faq' | 'dev'>('start');
 
     return (
         <div className="animate-fade-in pb-12">
@@ -72,6 +72,9 @@ const HowToUse: React.FC = () => {
                 <button onClick={() => setActiveTab('features')} className={`tab-btn ${activeTab === 'features' ? 'active' : 'inactive'}`}>
                     ✨ Advanced Features
                 </button>
+                <button onClick={() => setActiveTab('dev')} className={`tab-btn ${activeTab === 'dev' ? 'active' : 'inactive'}`}>
+                    👨‍🎓 Student App Setup
+                </button>
                 <button onClick={() => setActiveTab('faq')} className={`tab-btn ${activeTab === 'faq' ? 'active' : 'inactive'}`}>
                     ❓ FAQ & Support
                 </button>
@@ -118,7 +121,8 @@ const HowToUse: React.FC = () => {
                             <FieldRow label="Full Name" desc="Legal name as it should appear on certificates." />
                             <FieldRow label="Class" desc="Mandatory. Must be created in 'Classes' page first." />
                             <FieldRow label="Roll No" desc="Unique ID in class. System suggests next available number." />
-                            <FieldRow label="Mobile" desc="Primary contact for SMS/WhatsApp alerts." />
+                            <FieldRow label="Mobile" desc="Primary contact for SMS/WhatsApp alerts. Also used for Student Login." />
+                            <FieldRow label="Password" desc="Required for Student Login Portal." />
                             <FieldRow label="Father/Mother" desc="Required for ID Cards and official records." />
                             <FieldRow label="Previous Dues" desc="Enter any pending amount from last session here." />
                             <FieldRow label="Photo" desc="Passport size image. Auto-compressed for performance." />
@@ -172,14 +176,67 @@ const HowToUse: React.FC = () => {
                     </div>
                 )}
 
-                {/* Tab 4: FAQ */}
+                {/* Tab 4: Student App Setup (DB Functions) */}
+                {activeTab === 'dev' && (
+                    <div className="animate-fade-in-up bg-white rounded-2xl shadow p-8 space-y-6">
+                        <div className="flex items-center gap-4 mb-4">
+                            <div className="bg-green-100 p-3 rounded-full text-green-600">
+                                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>
+                            </div>
+                            <div>
+                                <h2 className="text-2xl font-bold text-gray-800">Enable Student Login</h2>
+                                <p className="text-gray-600">You must run this SQL code in your Supabase SQL Editor to allow students to log in.</p>
+                            </div>
+                        </div>
+
+                        <div className="bg-gray-900 rounded-lg p-6 overflow-x-auto border border-gray-700">
+                            <div className="flex justify-between items-center mb-2">
+                                <span className="text-xs font-mono text-green-400">PostgreSQL Function</span>
+                                <span className="text-xs text-gray-500">Copy & Paste into Supabase SQL Editor</span>
+                            </div>
+                            <pre className="text-sm font-mono text-gray-300 whitespace-pre-wrap">
+{`-- Function to securely verify student login credentials
+CREATE OR REPLACE FUNCTION student_login(phone text, pass text)
+RETURNS json AS $$
+DECLARE
+  student_record json;
+BEGIN
+  -- Select the student record matching mobile and password
+  -- NOTE: Ensure your 'students' table has 'mobile' and 'password' columns
+  SELECT row_to_json(s) INTO student_record
+  FROM students s
+  WHERE s.mobile = phone AND s.password = pass
+  LIMIT 1;
+
+  RETURN student_record;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;`}
+                            </pre>
+                        </div>
+                        
+                        <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 text-sm text-blue-800">
+                            <h4 className="font-bold mb-2">How to apply this?</h4>
+                            <ol className="list-decimal list-inside space-y-1">
+                                <li>Go to your Supabase Project Dashboard.</li>
+                                <li>Click on the <strong>SQL Editor</strong> icon in the left sidebar.</li>
+                                <li>Click "New Query".</li>
+                                <li>Paste the code block above into the editor.</li>
+                                <li>Click <strong>Run</strong>.</li>
+                                <li>Once successful, the "Student Login" feature on the login page will work immediately.</li>
+                            </ol>
+                        </div>
+                    </div>
+                )}
+
+
+                {/* Tab 5: FAQ */}
                 {activeTab === 'faq' && (
                     <div className="animate-fade-in-up bg-white rounded-2xl shadow p-8 space-y-6">
                         <FAQItem q="How do I delete a student?" a="Go to the Students page. In the table row for the student, click the Red Trash Icon. Note: This will also delete their exam results." />
                         <FAQItem q="How to collect fees?" a="Go to Students page -> Click the Eye Icon (View Profile). In the profile popup, scroll to the Fees section. Click 'Pay' next to the specific month." />
                         <FAQItem q="Can I edit an ID Card after generating?" a="No, the PDF is final. To change data, edit the Student Profile first, then regenerate the ID Card." />
                         <FAQItem q="My AI Helper isn't working?" a="Ensure your internet connection is stable. If it says 'ContentUnion error', try refreshing. The AI needs to connect to Google's servers." />
-                        <FAQItem q="How to promote students to next class?" a="Currently manual. Edit each student's profile and change their Class dropdown. A bulk promote feature is coming soon." />
+                        <FAQItem q="Student Login says 'Invalid Credentials'?" a="Ensure you have added a 'password' for the student in the Student Edit Modal. Also ensure you have run the SQL script mentioned in the 'Student App Setup' tab." />
                     </div>
                 )}
 

@@ -39,9 +39,11 @@ import AnalysisStaff from './pages/AnalysisStaff';
 import AnalysisSalary from './pages/AnalysisSalary';
 import AnalysisAdmissions from './pages/AnalysisAdmissions';
 import AnalysisResults from './pages/AnalysisResults';
+import StudentDashboard from './pages/StudentDashboard';
 
 const App: React.FC = () => {
   const [session, setSession] = useState<Session | null>(null);
+  const [studentSession, setStudentSession] = useState<any>(null); // For Student Login
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
@@ -53,12 +55,23 @@ const App: React.FC = () => {
       return;
     }
 
-    const getSession = async () => {
+    const checkSessions = async () => {
+      // 1. Check for Admin Session
       const { data: { session } } = await supabase.auth.getSession();
-      setSession(session);
+      
+      // 2. Check for Student Session (LocalStorage)
+      const storedStudent = localStorage.getItem('student_session');
+      
+      if (session) {
+        setSession(session);
+      } else if (storedStudent) {
+        setStudentSession(JSON.parse(storedStudent));
+      }
+      
       setLoading(false);
     };
-    getSession();
+    
+    checkSessions();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session);
@@ -71,8 +84,11 @@ const App: React.FC = () => {
           window.history.replaceState(null, '', window.location.pathname);
       }
 
-      if (!session && event !== 'PASSWORD_RECOVERY') {
-        navigate('/');
+      if (event === 'SIGNED_OUT') {
+         setSession(null);
+         setStudentSession(null);
+         localStorage.removeItem('student_session');
+         navigate('/');
       }
     });
 
@@ -93,15 +109,37 @@ const App: React.FC = () => {
     );
   }
 
-  if (!session) {
+  // Route Handling based on Session Type
+
+  // 1. Student Session Active
+  if (studentSession) {
     return (
         <Routes>
-            <Route path="/update-password" element={<UpdatePassword />} />
-            <Route path="*" element={<Login />} />
+            <Route path="/student-dashboard" element={<StudentDashboard student={studentSession} onLogout={() => {
+                localStorage.removeItem('student_session');
+                setStudentSession(null);
+                navigate('/');
+            }} />} />
+            <Route path="*" element={<Navigate to="/student-dashboard" replace />} />
         </Routes>
     );
   }
 
+  // 2. No Session (Login Page)
+  if (!session) {
+    return (
+        <Routes>
+            <Route path="/update-password" element={<UpdatePassword />} />
+            <Route path="*" element={<Login onStudentLogin={(student) => {
+                localStorage.setItem('student_session', JSON.stringify(student));
+                setStudentSession(student);
+                navigate('/student-dashboard');
+            }} />} />
+        </Routes>
+    );
+  }
+
+  // 3. Admin Session Active
   return (
     <Routes>
       <Route element={<Layout />}>
