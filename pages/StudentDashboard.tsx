@@ -32,13 +32,24 @@ interface StudentDashboardProps {
 const months = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
 const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
-// Helper to parse paid amount
+// Exact parser used in StudentProfileModal to maintain consistency
 const parsePaidAmount = (status: string | undefined | null): number => {
-    if (!status || status === 'undefined' || status === 'Dues') return 0;
-    if (/^\d{4}-\d{2}-\d{2}/.test(status) && !status.includes('=')) return Infinity;
-    return status.split(';').reduce((total, p) => {
-        const parts = p.split('=d=');
-        return total + (parts.length === 2 ? parseFloat(parts[0]) || 0 : 0);
+    if (!status || status === 'undefined' || status === 'Dues') {
+        return 0;
+    }
+    // Legacy ISO date check
+    const isoDateRegex = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+    if (isoDateRegex.test(status)) {
+        return Infinity; // Represents full payment in legacy format
+    }
+    const payments = status.split(';');
+    return payments.reduce((total, payment) => {
+        const parts = payment.split('=d=');
+        if (parts.length === 2) {
+            const amount = parseFloat(parts[0]);
+            return total + (isNaN(amount) ? 0 : amount);
+        }
+        return total;
     }, 0);
 };
 
@@ -51,53 +62,55 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ student: studentsDa
     
     const monthlyFee = class_info?.school_fees || 0;
     const classTeacher = class_info?.class_teacher;
-    const timeTable = class_info?.time_table || [];
+    const timeTable = currentData.class_info?.time_table || [];
 
-    // --- FEE CALCULATION LOGIC ---
-    let totalFeesPaid = 0;
-    let totalFeesDue = 0;
+    // --- ENHANCED FEE CALCULATION LOGIC (Matching Admin Profile) ---
+    let totalPaidSum = 0;
+    let totalDuesSum = (profile.previous_dues || 0);
 
     const feeLedger = months.map((monthKey, index) => {
         const status = profile[monthKey as keyof Student] as string | undefined;
-        let paid = 0;
-        let due = 0;
-        let statusText = 'Pending';
-        let statusColor = 'bg-gray-100 text-gray-500';
-
-        const parsedPaid = parsePaidAmount(status);
-        if (parsedPaid === Infinity) paid = monthlyFee;
-        else paid = parsedPaid;
+        const paidAmountRaw = parsePaidAmount(status);
+        const paidAmount = paidAmountRaw === Infinity ? monthlyFee : paidAmountRaw;
+        
+        totalPaidSum += paidAmount;
 
         const currentMonthIndex = new Date().getMonth();
         const isPastOrCurrent = index <= currentMonthIndex;
+        
+        let statusText = 'Upcoming';
+        let statusColor = 'bg-gray-100 text-gray-400';
+        let balanceForMonth = 0;
 
-        if (isPastOrCurrent) {
-            if (paid >= monthlyFee) {
-                due = 0; statusText = 'Paid'; statusColor = 'bg-green-100 text-green-700';
-            } else if (paid > 0) {
-                due = monthlyFee - paid; statusText = 'Partial'; statusColor = 'bg-yellow-100 text-yellow-700';
-            } else if (status === 'Dues') {
-                due = monthlyFee; statusText = 'Due'; statusColor = 'bg-red-100 text-red-700';
-            } else {
-                due = monthlyFee; statusText = 'Due'; statusColor = 'bg-red-100 text-red-700';
-            }
-        } else {
-            due = monthlyFee; statusText = 'Upcoming';
+        if (paidAmount >= monthlyFee && monthlyFee > 0) {
+            statusText = 'Paid';
+            statusColor = 'bg-green-100 text-green-700';
+        } else if (paidAmount > 0) {
+            balanceForMonth = monthlyFee - paidAmount;
+            statusText = `Partial (₹${balanceForMonth} due)`;
+            statusColor = 'bg-yellow-100 text-yellow-700';
+            if (isPastOrCurrent) totalDuesSum += balanceForMonth;
+        } else if (status === 'Dues' || isPastOrCurrent) {
+            statusText = 'Dues';
+            statusColor = 'bg-red-100 text-red-700';
+            if (isPastOrCurrent) totalDuesSum += monthlyFee;
         }
 
-        totalFeesPaid += paid;
-        if(isPastOrCurrent) totalFeesDue += due;
-
-        return { month: monthNames[index], feeAmount: monthlyFee, paidAmount: paid, dueAmount: due, statusText, statusColor };
+        return { 
+            month: monthNames[index], 
+            feeAmount: monthlyFee, 
+            paidAmount: paidAmount, 
+            dueAmount: balanceForMonth || (statusText === 'Dues' ? monthlyFee : 0), 
+            statusText, 
+            statusColor 
+        };
     });
 
-    if(profile.previous_dues) totalFeesDue += profile.previous_dues;
-
-    // Calculate Other Fees
+    // Add Other Fees to summary
     const otherFees = profile.other_fees || [];
     otherFees.forEach(f => {
-        if(f.paid_date) totalFeesPaid += f.amount;
-        else totalFeesDue += f.amount;
+        if(f.paid_date) totalPaidSum += f.amount;
+        else totalDuesSum += f.amount;
     });
 
     return (
@@ -193,21 +206,20 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ student: studentsDa
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-8">
                                     <div className="space-y-6">
                                         <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider border-b pb-2">Personal Details</h3>
-                                        <InfoRow label="Date of Birth" value={profile.date_of_birth ? new Date(profile.date_of_birth).toLocaleDateString() : 'N/A'} icon="🎂" />
-                                        <InfoRow label="Gender" value={profile.gender} icon="⚥" />
-                                        <InfoRow label="Blood Group" value={profile.blood_group} icon="🩸" />
-                                        <InfoRow label="Caste/Category" value={profile.caste} icon="🏷️" />
+                                        <InfoRow icon="🎂" label="Date of Birth" value={profile.date_of_birth ? new Date(profile.date_of_birth).toLocaleDateString() : 'N/A'} />
+                                        <InfoRow icon="⚥" label="Gender" value={profile.gender} />
+                                        <InfoRow icon="🩸" label="Blood Group" value={profile.blood_group} />
+                                        <InfoRow icon="🏷️" label="Caste/Category" value={profile.caste} />
                                     </div>
                                     <div className="space-y-6">
                                         <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider border-b pb-2">Family & Contact</h3>
-                                        <InfoRow label="Father's Name" value={profile.father_name} icon="👨" />
-                                        <InfoRow label="Mother's Name" value={profile.mother_name} icon="👩" />
-                                        <InfoRow label="Mobile Number" value={profile.mobile} icon="📱" />
-                                        <InfoRow label="Address" value={profile.address} icon="📍" />
+                                        <InfoRow icon="👨" label="Father's Name" value={profile.father_name} />
+                                        <InfoRow icon="👩" label="Mother's Name" value={profile.mother_name} />
+                                        <InfoRow icon="📱" label="Mobile Number" value={profile.mobile} />
+                                        <InfoRow icon="📍" label="Address" value={profile.address} />
                                     </div>
                                 </div>
                                 
-                                {/* Class Teacher Section */}
                                 {classTeacher && (
                                     <div className="mt-8 bg-blue-50 p-4 rounded-xl border border-blue-100 flex items-center gap-4">
                                         <div className="bg-blue-200 p-2 rounded-full text-blue-700">
@@ -268,73 +280,73 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ student: studentsDa
                 {activeTab === 'fees' && (
                     <div className="animate-fade-in-up space-y-8">
                         {/* Fee Summary Cards */}
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                            <div className="bg-white p-6 rounded-xl shadow-md border-l-4 border-indigo-500">
-                                <p className="text-sm font-semibold text-gray-500 uppercase">Total Payable</p>
-                                <p className="text-3xl font-bold text-gray-800 mt-1">₹{(totalFeesPaid + totalFeesDue).toLocaleString()}</p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                            <div className="bg-blue-50 p-6 rounded-2xl shadow-sm border border-blue-100 text-center">
+                                <p className="text-xs font-bold text-blue-500 uppercase tracking-widest mb-1">Monthly Fee</p>
+                                <p className="text-2xl font-black text-blue-900">₹{monthlyFee.toLocaleString()}</p>
                             </div>
-                            <div className="bg-white p-6 rounded-xl shadow-md border-l-4 border-green-500">
-                                <p className="text-sm font-semibold text-gray-500 uppercase">Total Paid</p>
-                                <p className="text-3xl font-bold text-green-600 mt-1">₹{totalFeesPaid.toLocaleString()}</p>
+                            <div className="bg-orange-50 p-6 rounded-2xl shadow-sm border border-orange-100 text-center">
+                                <p className="text-xs font-bold text-orange-500 uppercase tracking-widest mb-1">Previous Dues</p>
+                                <p className="text-2xl font-black text-orange-900">₹{(profile.previous_dues || 0).toLocaleString()}</p>
                             </div>
-                            <div className="bg-white p-6 rounded-xl shadow-md border-l-4 border-red-500">
-                                <p className="text-sm font-semibold text-gray-500 uppercase">Total Due</p>
-                                <p className="text-3xl font-bold text-red-600 mt-1">₹{totalFeesDue.toLocaleString()}</p>
+                            <div className="bg-green-50 p-6 rounded-2xl shadow-sm border border-green-100 text-center">
+                                <p className="text-xs font-bold text-green-500 uppercase tracking-widest mb-1">Total Paid</p>
+                                <p className="text-2xl font-black text-green-900">₹{totalPaidSum.toLocaleString()}</p>
+                            </div>
+                            <div className="bg-rose-50 p-6 rounded-2xl shadow-sm border border-rose-100 text-center">
+                                <p className="text-xs font-bold text-rose-500 uppercase tracking-widest mb-1">Net Balance</p>
+                                <p className="text-2xl font-black text-rose-900">₹{totalDuesSum.toLocaleString()}</p>
                             </div>
                         </div>
 
-                        {/* Detailed Ledger */}
-                        <div className="bg-white rounded-xl shadow-lg overflow-hidden border border-gray-200">
-                            <div className="px-6 py-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
-                                <h3 className="font-bold text-gray-800">Fee Ledger</h3>
-                                <span className="text-xs font-mono text-gray-500 bg-white px-2 py-1 rounded border">Tuition: ₹{monthlyFee}/mo</span>
+                        {/* Visual Fee Ledger */}
+                        <div className="bg-white rounded-3xl shadow-xl p-8 border border-gray-100">
+                            <div className="flex justify-between items-center mb-8">
+                                <h3 className="text-xl font-black text-gray-800">Payment Ledger</h3>
+                                <div className="flex gap-4 text-xs font-bold">
+                                    <span className="flex items-center gap-1.5"><span className="w-3 h-3 bg-green-500 rounded-sm"></span> Paid</span>
+                                    <span className="flex items-center gap-1.5"><span className="w-3 h-3 bg-red-500 rounded-sm"></span> Dues</span>
+                                    <span className="flex items-center gap-1.5"><span className="w-3 h-3 bg-yellow-400 rounded-sm"></span> Partial</span>
+                                </div>
                             </div>
-                            <div className="overflow-x-auto">
-                                <table className="min-w-full text-sm text-left">
-                                    <thead className="text-xs text-gray-500 uppercase bg-gray-50 border-b">
-                                        <tr>
-                                            <th className="px-6 py-3">Description</th>
-                                            <th className="px-6 py-3 text-right">Amount</th>
-                                            <th className="px-6 py-3 text-right">Paid</th>
-                                            <th className="px-6 py-3 text-right">Due</th>
-                                            <th className="px-6 py-3 text-center">Status</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-100">
+                            
+                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                                {feeLedger.map((row, idx) => (
+                                    <div key={idx} className="bg-gray-50 rounded-2xl p-4 flex justify-between items-center border border-gray-100 hover:shadow-md transition-shadow">
+                                        <div>
+                                            <p className="text-sm font-black text-gray-800">{row.month}</p>
+                                            <p className="text-xs text-gray-400 font-bold mt-0.5">₹{row.feeAmount}</p>
+                                        </div>
+                                        <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${row.statusColor}`}>
+                                            {row.statusText}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+
+                            {/* Previous Dues and Other Fees section */}
+                            {(profile.previous_dues || otherFees.length > 0) && (
+                                <div className="mt-10 pt-8 border-t border-gray-100">
+                                    <h4 className="text-sm font-black text-gray-400 uppercase tracking-widest mb-4">Additional Charges</h4>
+                                    <div className="space-y-3">
                                         {profile.previous_dues && profile.previous_dues > 0 && (
-                                            <tr className="bg-red-50/30">
-                                                <td className="px-6 py-4 font-bold text-red-800">Previous Dues</td>
-                                                <td className="px-6 py-4 text-right text-gray-500">-</td>
-                                                <td className="px-6 py-4 text-right text-gray-500">-</td>
-                                                <td className="px-6 py-4 text-right font-bold text-red-600">₹{profile.previous_dues}</td>
-                                                <td className="px-6 py-4 text-center"><span className="px-2 py-1 rounded-full text-xs font-bold bg-red-100 text-red-700">Due</span></td>
-                                            </tr>
+                                            <div className="flex justify-between items-center bg-rose-50/50 p-4 rounded-xl border border-rose-100">
+                                                <span className="font-bold text-gray-700">Previous Session Arrears</span>
+                                                <span className="text-rose-700 font-black">₹{profile.previous_dues}</span>
+                                            </div>
                                         )}
-                                        {feeLedger.map((row, idx) => (
-                                            <tr key={idx} className="hover:bg-gray-50 transition-colors">
-                                                <td className="px-6 py-4 font-medium text-gray-900">{row.month}</td>
-                                                <td className="px-6 py-4 text-right text-gray-600">₹{row.feeAmount}</td>
-                                                <td className="px-6 py-4 text-right font-medium text-green-600">{row.paidAmount > 0 ? `₹${row.paidAmount}` : '-'}</td>
-                                                <td className="px-6 py-4 text-right font-bold text-red-600">{row.dueAmount > 0 ? `₹${row.dueAmount}` : '-'}</td>
-                                                <td className="px-6 py-4 text-center"><span className={`px-3 py-1 rounded-full text-xs font-bold ${row.statusColor}`}>{row.statusText}</span></td>
-                                            </tr>
-                                        ))}
                                         {otherFees.map((fee, i) => (
-                                            <tr key={`other-${i}`} className="bg-yellow-50/50">
-                                                 <td className="px-6 py-4 font-medium text-gray-800">{fee.fees_name} (Extra)</td>
-                                                 <td className="px-6 py-4 text-right text-gray-600">₹{fee.amount}</td>
-                                                 <td className="px-6 py-4 text-right font-medium text-green-600">{fee.paid_date ? `₹${fee.amount}` : '-'}</td>
-                                                 <td className="px-6 py-4 text-right font-bold text-red-600">{!fee.paid_date ? `₹${fee.amount}` : '-'}</td>
-                                                 <td className="px-6 py-4 text-center">
-                                                    <span className={`px-3 py-1 rounded-full text-xs font-bold ${fee.paid_date ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                                                        {fee.paid_date ? 'Paid' : 'Due'}
-                                                    </span>
-                                                </td>
-                                            </tr>
+                                            <div key={i} className={`flex justify-between items-center p-4 rounded-xl border ${fee.paid_date ? 'bg-green-50/50 border-green-100' : 'bg-rose-50/50 border-rose-100'}`}>
+                                                <span className="font-bold text-gray-700">{fee.fees_name}</span>
+                                                <div className="flex items-center gap-4">
+                                                    <span className={`text-xs font-black uppercase ${fee.paid_date ? 'text-green-600' : 'text-rose-600'}`}>{fee.paid_date ? 'Paid' : 'Due'}</span>
+                                                    <span className={`font-black ${fee.paid_date ? 'text-green-700' : 'text-rose-700'}`}>₹{fee.amount}</span>
+                                                </div>
+                                            </div>
                                         ))}
-                                    </tbody>
-                                </table>
-                            </div>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
                 )}
@@ -486,12 +498,14 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ student: studentsDa
 };
 
 // --- Sub Components ---
-const InfoRow: React.FC<{ label: string; value?: string; icon: string }> = ({ label, value, icon }) => (
-    <div className="flex items-start gap-3">
-        <span className="text-xl">{icon}</span>
-        <div>
-            <p className="text-xs font-semibold text-gray-400 uppercase">{label}</p>
-            <p className="text-gray-800 font-medium">{value || 'N/A'}</p>
+const InfoRow: React.FC<{ icon: string; label: string; value?: string | null }> = ({ icon, label, value }) => (
+    <div className="flex items-start gap-4">
+        <div className="w-10 h-10 bg-indigo-50 rounded-lg flex items-center justify-center text-xl shrink-0">
+            {icon}
+        </div>
+        <div className="min-w-0">
+            <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">{label}</p>
+            <p className="text-gray-800 font-bold truncate">{value || 'Not Provided'}</p>
         </div>
     </div>
 );

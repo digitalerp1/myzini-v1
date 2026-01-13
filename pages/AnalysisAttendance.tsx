@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../services/supabase';
 import Spinner from '../components/Spinner';
@@ -59,8 +58,9 @@ const AnalysisAttendance: React.FC = () => {
                     }
                 });
 
+                // FIX: Cast entry[0] (date string) to string to fix unknown type assignment error.
                 const trendData = Array.from(last7DaysMap.entries()).map(([date, val]) => ({
-                    label: new Date(date).toLocaleDateString('en-US', { day: 'numeric', month: 'short' }),
+                    label: new Date(date as string).toLocaleDateString('en-US', { day: 'numeric', month: 'short' }),
                     value: val
                 }));
 
