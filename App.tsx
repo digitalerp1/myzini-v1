@@ -33,6 +33,13 @@ import Analysis from './pages/Analysis';
 import FeesAnalysis from './pages/FeesAnalysis';
 import DataCenter from './pages/DataCenter';
 
+// Individual Analysis Pages
+import AnalysisAttendance from './pages/AnalysisAttendance';
+import AnalysisStaff from './pages/AnalysisStaff';
+import AnalysisSalary from './pages/AnalysisSalary';
+import AnalysisAdmissions from './pages/AnalysisAdmissions';
+import AnalysisResults from './pages/AnalysisResults';
+
 const App: React.FC = () => {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
@@ -100,8 +107,16 @@ const App: React.FC = () => {
       <Route element={<Layout />}>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<Dashboard user={session.user} />} />
+        
+        {/* Analysis Hub & Sub-pages */}
         <Route path="/analysis" element={<Analysis user={session.user} />} />
         <Route path="/fees-analysis" element={<FeesAnalysis user={session.user} />} />
+        <Route path="/analysis/attendance" element={<AnalysisAttendance />} />
+        <Route path="/analysis/staff" element={<AnalysisStaff />} />
+        <Route path="/analysis/salary" element={<AnalysisSalary />} />
+        <Route path="/analysis/admissions" element={<AnalysisAdmissions />} />
+        <Route path="/analysis/results" element={<AnalysisResults />} />
+
         <Route path="/profile" element={<Profile user={session.user} />} />
         <Route path="/students" element={<Students />} />
         <Route path="/staff" element={<Staff />} />
