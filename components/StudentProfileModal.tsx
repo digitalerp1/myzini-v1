@@ -1,14 +1,12 @@
-
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../services/supabase';
-import { Student, Class, OtherFee, StudentHostelData, HostelFeeRecord } from '../types';
+import { Student, Class, OtherFee } from '../types';
 import Spinner from './Spinner';
 import UserCircleIcon from './icons/UserCircleIcon';
 import PhoneIcon from './icons/PhoneIcon';
 import AcademicCapIcon from './icons/AcademicCapIcon';
 import TransportIcon from './icons/TransportIcon';
-import HostelIcon from './icons/HostelIcon';
-
+import RupeeIcon from './icons/RupeeIcon';
 
 interface StudentProfileModalProps {
     student: Student;
@@ -16,809 +14,227 @@ interface StudentProfileModalProps {
     onClose: () => void;
 }
 
-const months: (keyof Student)[] = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+const monthKeys: (keyof Student)[] = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
 const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
 const parsePaidAmount = (status: string | undefined | null): number => {
-    if (!status || status === 'undefined' || status === 'Dues') {
-        return 0;
-    }
-    const isoDateRegex = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
-    if (isoDateRegex.test(status)) {
-        return Infinity; // Represents a legacy full payment
-    }
-    const payments = status.split(';');
-    return payments.reduce((total, payment) => {
-        const parts = payment.split('=d=');
-        if (parts.length === 2) {
-            const amount = parseFloat(parts[0]);
-            return total + (isNaN(amount) ? 0 : amount);
-        }
-        return total;
+    if (!status || status === 'undefined' || status === 'Dues') return 0;
+    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(status)) return Infinity;
+    return status.split(';').reduce((total, p) => {
+        const parts = p.split('=d=');
+        return total + (parts.length === 2 ? parseFloat(parts[0]) || 0 : 0);
     }, 0);
 };
 
 const StudentProfileModal: React.FC<StudentProfileModalProps> = ({ student: initialStudent, classes, onClose }) => {
     const [student, setStudent] = useState<Student>(initialStudent);
+    const [activeTab, setActiveTab] = useState<'info' | 'fees' | 'all-years'>('info');
     const [updatingFee, setUpdatingFee] = useState<string | null>(null);
-    const [updatingOtherFee, setUpdatingOtherFee] = useState<string | null>(null);
-    const [attendanceStatus, setAttendanceStatus] = useState<Map<string, 'present' | 'absent'>>(new Map());
-    const [classAttendanceDates, setClassAttendanceDates] = useState<Set<string>>(new Set());
-    const [loadingAttendance, setLoadingAttendance] = useState(true);
-    const [error, setError] = useState<string | null>(null);
     const [paymentAction, setPaymentAction] = useState<{ month: string, remaining: number } | null>(null);
     const [customAmount, setCustomAmount] = useState<string>('');
-    
-    // New State for Driver and Attendance UI
-    const [assignedDriver, setAssignedDriver] = useState<{ name: string; van_number: string } | null>(null);
-    const [showAllAttendance, setShowAllAttendance] = useState(false);
 
-    // Hostel Payment Logic
-    const [paymentModalData, setPaymentModalData] = useState<{ recordId: string, total: number, alreadyPaid: number } | null>(null);
-    const [hostelPaymentAmount, setHostelPaymentAmount] = useState<string>('');
-    const [hostelPaymentProcessing, setHostelPaymentProcessing] = useState(false);
-
-    // Manual Due (Hostel)
-    const [hostelDueAmount, setHostelDueAmount] = useState<string>('');
-    const [hostelDueDesc, setHostelDueDesc] = useState<string>('');
-    const [hostelDueProcessing, setHostelDueProcessing] = useState(false);
-
-    // Active Tab State
-    const [activeTab, setActiveTab] = useState<'info' | 'fees' | 'hostel'>('info');
-
-    const currentYear = new Date().getFullYear();
-    const currentMonthIndex = new Date().getMonth();
-
-     useEffect(() => {
-        const channel = supabase.channel(`student-profile-${initialStudent.id}`)
-            .on('postgres_changes', {
-                event: 'UPDATE',
-                schema: 'public',
-                table: 'students',
-                filter: `id=eq.${initialStudent.id}`
-            }, (payload) => {
-                setStudent(payload.new as Student);
-            })
+    useEffect(() => {
+        const channel = supabase.channel(`profile-${initialStudent.id}`)
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'students', filter: `id=eq.${initialStudent.id}` }, 
+            (payload) => setStudent(payload.new as Student))
             .subscribe();
-
-        return () => {
-            supabase.removeChannel(channel);
-        };
+        return () => { supabase.removeChannel(channel); };
     }, [initialStudent.id]);
 
-    // Fetch Assigned Driver
-    useEffect(() => {
-        const fetchDriver = async () => {
-            if (!student.class || !student.roll_number) return;
-            
-            const { data, error } = await supabase
-                .from('driver')
-                .select('name, van_number, students_list');
-            
-            if (data) {
-                // Find the driver who has this student in their list
-                const match = data.find((d: any) => 
-                    d.students_list?.some((s: any) => 
-                        s.class === student.class && s.roll_number === student.roll_number
-                    )
-                );
-                
-                if (match) {
-                    setAssignedDriver({ name: match.name, van_number: match.van_number });
-                } else {
-                    setAssignedDriver(null);
-                }
+    const classInfo = useMemo(() => classes.find(c => c.class_name === student.class), [classes, student.class]);
+    const monthlyFee = classInfo?.school_fees || 0;
+
+    const feeStats = useMemo(() => {
+        let totalPaid = 0;
+        let sessionDues = (student.previous_dues || 0);
+        const currentMonthIdx = new Date().getMonth();
+
+        monthKeys.forEach((key, idx) => {
+            const status = student[key] as string;
+            const paid = parsePaidAmount(status);
+            const actualPaid = paid === Infinity ? monthlyFee : paid;
+            totalPaid += actualPaid;
+
+            if (idx <= currentMonthIdx) {
+                const balance = monthlyFee - actualPaid;
+                if (balance > 0) sessionDues += balance;
             }
-        };
-        fetchDriver();
-    }, [student.class, student.roll_number]);
-
-
-    const fetchAttendanceData = useCallback(async () => {
-        if (!student.class || !student.roll_number) {
-            setLoadingAttendance(false);
-            return;
-        }
-
-        const studentClassInfo = classes.find(c => c.class_name === student.class);
-        if (!studentClassInfo) {
-            setLoadingAttendance(false);
-            return;
-        }
-
-        setLoadingAttendance(true);
-        const { data, error } = await supabase
-            .from('attendance')
-            .select('date, present, absent')
-            .eq('class_id', studentClassInfo.id)
-            .gte('date', `${currentYear}-01-01`)
-            .lte('date', `${currentYear}-12-31`);
-
-        if (error) {
-            setError(error.message);
-        } else {
-            const statusMap = new Map<string, 'present' | 'absent'>();
-            const classDates = new Set<string>();
-
-            data.forEach(record => {
-                // Track that attendance was taken on this day for this class
-                classDates.add(record.date);
-
-                const presentRolls = record.present ? record.present.split(',') : [];
-                const absentRolls = record.absent ? record.absent.split(',') : [];
-
-                if (presentRolls.includes(student.roll_number!)) {
-                    statusMap.set(record.date, 'present');
-                } else if (absentRolls.includes(student.roll_number!)) {
-                    statusMap.set(record.date, 'absent');
-                }
-            });
-            setAttendanceStatus(statusMap);
-            setClassAttendanceDates(classDates);
-        }
-        setLoadingAttendance(false);
-    }, [student.class, student.roll_number, classes, currentYear]);
-
-    useEffect(() => {
-        fetchAttendanceData();
-    }, [fetchAttendanceData]);
-
-    // --- Hostel Logic ---
-    const handleAddManualHostelDue = async () => {
-        if (!hostelDueAmount || !hostelDueDesc) return;
-        setHostelDueProcessing(true);
-        
-        const newRecord: HostelFeeRecord = {
-            id: crypto.randomUUID(),
-            month: hostelDueDesc,
-            amount: parseFloat(hostelDueAmount),
-            paid_amount: 0,
-            status: 'Due',
-            description: hostelDueDesc,
-            payment_history: []
-        };
-
-        const existingRecords = student.hostel_data?.fee_records || [];
-        const updatedRecords = [...existingRecords, newRecord];
-        
-        const updatedHostelData = { 
-            ...(student.hostel_data || { 
-                is_active: true, building_id: '', building_name: '', floor_id: '', floor_name: '', room_no: '', joining_date: new Date().toISOString(), monthly_fee: 0 
-            }),
-            fee_records: updatedRecords 
-        };
-
-        const { error } = await supabase.from('students').update({ hostel_data: updatedHostelData }).eq('id', student.id);
-        if(error) setError(error.message);
-        else {
-            setHostelDueAmount('');
-            setHostelDueDesc('');
-        }
-        setHostelDueProcessing(false);
-    }
-
-    const openHostelPaymentModal = (record: HostelFeeRecord) => {
-        setPaymentModalData({
-            recordId: record.id,
-            total: record.amount,
-            alreadyPaid: record.paid_amount || 0
         });
-        setHostelPaymentAmount((record.amount - (record.paid_amount || 0)).toString()); // Default to remaining amount
-    }
 
-    const submitHostelPayment = async () => {
-        if (!paymentModalData || !student.hostel_data) return;
-        const amountToPay = parseFloat(hostelPaymentAmount);
-        if (isNaN(amountToPay) || amountToPay <= 0) {
-            alert("Invalid amount");
-            return;
-        }
+        const otherPaid = (student.other_fees || []).reduce((acc, f) => acc + (f.paid_date ? f.amount : 0), 0);
+        const otherDues = (student.other_fees || []).reduce((acc, f) => acc + (!f.paid_date ? f.amount : 0), 0);
 
-        setHostelPaymentProcessing(true);
-        const records = [...(student.hostel_data.fee_records || [])];
-        const recordIndex = records.findIndex(r => r.id === paymentModalData.recordId);
+        return { totalPaid: totalPaid + otherPaid, totalDues: sessionDues + otherDues, previousDues: student.previous_dues || 0 };
+    }, [student, monthlyFee]);
 
-        if (recordIndex >= 0) {
-            const record = records[recordIndex];
-            const newPaidTotal = (record.paid_amount || 0) + amountToPay;
-            
-            // Update history
-            const newHistory = [...(record.payment_history || []), {
-                date: new Date().toISOString(),
-                amount: amountToPay
-            }];
-
-            records[recordIndex] = {
-                ...record,
-                paid_amount: newPaidTotal,
-                status: newPaidTotal >= record.amount ? 'Paid' : 'Partial',
-                paid_date: newPaidTotal >= record.amount ? new Date().toISOString() : undefined,
-                payment_history: newHistory
-            };
-
-            const updatedHostelData = { ...student.hostel_data, fee_records: records };
-            const { error } = await supabase.from('students').update({ hostel_data: updatedHostelData }).eq('id', student.id);
-            
-            if(error) alert(error.message);
-            else setPaymentModalData(null);
-        }
-        setHostelPaymentProcessing(false);
-    }
-
-
-    const handlePayment = async (month: keyof Student, amountToPay: number) => {
-        if (!amountToPay || amountToPay <= 0) {
-            setError('Invalid payment amount.');
-            return;
-        }
-        setUpdatingFee(month);
-        setError(null);
-
-        const { data: currentStudentData, error: fetchError } = await supabase
-            .from('students').select(month).eq('id', student.id).single();
-        
-        if (fetchError) {
-            setError(`Failed to fetch latest data: ${fetchError.message}`);
-            setUpdatingFee(null);
-            return;
-        }
-
-        const currentStatus = currentStudentData?.[month];
-        const newPaymentEntry = `${amountToPay}=d=${new Date().toISOString()}`;
-        
-        let newStatus = newPaymentEntry;
-        const paidSoFar = parsePaidAmount(String(currentStatus));
-
-        if (paidSoFar > 0 && paidSoFar !== Infinity) {
-            newStatus = `${currentStatus};${newPaymentEntry}`;
-        }
+    const handlePayment = async (month: keyof Student, amount: number) => {
+        if (amount <= 0) return;
+        setUpdatingFee(month as string);
+        const currentStatus = student[month] as string;
+        const newPayment = `${amount}=d=${new Date().toISOString()}`;
+        const newStatus = (currentStatus && currentStatus !== 'undefined' && currentStatus !== 'Dues') 
+            ? `${currentStatus};${newPayment}` 
+            : newPayment;
 
         const { error } = await supabase.from('students').update({ [month]: newStatus }).eq('id', student.id);
-        
-        if (error) {
-            setError(`Failed to update fee: ${error.message}`);
-        } else {
-            // Optimistic update handled by Supabase realtime, just close the popover.
+        if (!error) {
             setPaymentAction(null);
             setCustomAmount('');
         }
         setUpdatingFee(null);
     };
 
-    const handlePayOtherFee = async (feeToPay: OtherFee) => {
-        const key = `${feeToPay.fees_name}-${feeToPay.dues_date}`;
-        setUpdatingOtherFee(key);
-        setError(null);
+    const renderFeeBadge = (monthKey: keyof Student) => {
+        const status = student[monthKey] as string;
+        const paid = parsePaidAmount(status);
+        const actualPaid = paid === Infinity ? monthlyFee : paid;
+        const remaining = monthlyFee - actualPaid;
+        const isActionOpen = paymentAction?.month === monthKey;
 
-        const updatedOtherFees = student.other_fees?.map(fee => {
-            if (fee.fees_name === feeToPay.fees_name && fee.dues_date === feeToPay.dues_date && !fee.paid_date) {
-                return { ...fee, paid_date: new Date().toISOString() };
-            }
-            return fee;
-        });
-
-        const { error } = await supabase
-            .from('students')
-            .update({ other_fees: updatedOtherFees })
-            .eq('id', student.id);
+        if (actualPaid >= monthlyFee && monthlyFee > 0) return <span className="badge bg-green-100 text-green-700">Paid</span>;
         
-        if (error) {
-            setError(`Failed to update fee: ${error.message}`);
-        }
-        setUpdatingOtherFee(null);
-    };
-
-    const studentClassInfo = classes.find(c => c.class_name === student.class);
-    const feeAmount = studentClassInfo?.school_fees || 0;
-
-    const { totalDues, totalPaid } = months.reduce((acc, month) => {
-        const paidForMonthRaw = parsePaidAmount(String(student[month]));
-        const paidForMonth = paidForMonthRaw === Infinity ? feeAmount : paidForMonthRaw;
-        
-        acc.totalPaid += paidForMonth;
-
-        if (student[month] && student[month] !== 'undefined' && paidForMonth < feeAmount) {
-            acc.totalDues += (feeAmount - paidForMonth);
-        }
-        return acc;
-    }, { totalDues: 0, totalPaid: 0 });
-
-    const otherFeesSummary = (student.other_fees || []).reduce((acc, fee) => {
-        if (fee.paid_date) {
-            acc.paid += fee.amount;
-        } else {
-            acc.dues += fee.amount;
-        }
-        return acc;
-    }, { paid: 0, dues: 0 });
-
-    const finalTotalPaid = totalPaid + otherFeesSummary.paid;
-    const finalTotalDues = totalDues + otherFeesSummary.dues + (student.previous_dues || 0);
-
-    // FIX: Explicitly typing the accumulator to avoid unknown type errors on line 556 and 557
-    const attendanceSummary = Array.from(attendanceStatus.values()).reduce((acc: { present: number; absent: number }, status: 'present' | 'absent') => {
-        if (status === 'present') acc.present++;
-        if (status === 'absent') acc.absent++;
-        return acc;
-    }, { present: 0, absent: 0 });
-
-    // Hostel Calculations
-    const hostelData = student.hostel_data as StudentHostelData | undefined;
-    const hostelTotalPaid = hostelData?.fee_records?.reduce((sum, r) => sum + (r.paid_amount || 0), 0) || 0;
-    const hostelTotalDues = hostelData?.fee_records?.reduce((sum, r) => sum + (r.amount - (r.paid_amount || 0)), 0) || 0;
-
-
-    const renderFeeStatus = (month: keyof Student) => {
-        const status = student[month];
-        const paidAmountRaw = parsePaidAmount(String(status));
-        const paidAmount = paidAmountRaw === Infinity ? feeAmount : paidAmountRaw;
-        const isFullyPaid = paidAmount >= feeAmount && feeAmount > 0;
-        const remainingDue = feeAmount - paidAmount;
-
-        const isActionOpen = paymentAction?.month === month;
-
-        if (isFullyPaid) {
-            return <span className="fee-badge bg-green-100 text-green-800">Paid</span>;
-        }
-        if (paidAmount > 0) {
-            return (
-                <div className="flex items-center gap-2 relative">
-                    <span className="fee-badge bg-yellow-100 text-yellow-800" title={`Paid: ₹${paidAmount}`}>
-                        Partially Paid (₹{remainingDue} due)
-                    </span>
-                    <button 
-                        onClick={() => setPaymentAction({ month, remaining: remainingDue })}
-                        disabled={!!updatingFee}
-                        className="px-2 py-0.5 text-xs text-white bg-blue-600 rounded hover:bg-blue-700 disabled:bg-gray-400"
-                    >
-                        Pay
-                    </button>
-                    {isActionOpen && renderPaymentPopover(month, remainingDue)}
-                </div>
-            );
-        }
-        if (status === 'Dues') {
-             return (
-                <div className="flex items-center gap-2 relative">
-                    <span className="fee-badge bg-red-100 text-red-800">Dues</span>
-                    <button 
-                        onClick={() => setPaymentAction({ month, remaining: feeAmount })}
-                        disabled={!!updatingFee}
-                        className="px-2 py-0.5 text-xs text-white bg-green-600 rounded hover:bg-green-700 disabled:bg-gray-400"
-                    >
-                        {updatingFee === month ? <Spinner size="3" /> : 'Pay'}
-                    </button>
-                     {isActionOpen && renderPaymentPopover(month, feeAmount)}
-                </div>
-            );
-        }
-        return <span className="fee-badge bg-gray-200 text-gray-800">Pending</span>;
-    };
-    
-    const renderPaymentPopover = (month: keyof Student, remaining: number) => (
-        <div className="absolute top-full right-0 mt-2 w-64 bg-white border border-gray-300 rounded-lg shadow-xl z-10 p-4 space-y-3">
-            <h4 className="font-bold text-sm text-gray-800">Record Payment for {month}</h4>
-            <button
-                onClick={() => handlePayment(month, remaining)}
-                disabled={updatingFee === month}
-                className="w-full text-center px-3 py-2 text-sm bg-green-500 text-white rounded-md hover:bg-green-600 disabled:bg-gray-400"
-            >
-                {updatingFee === month ? <Spinner size="4" /> : `Pay Full Amount (₹${remaining})`}
-            </button>
-            <div className="flex items-center gap-2">
-                <input
-                    type="number"
-                    value={customAmount}
-                    onChange={(e) => setCustomAmount(e.target.value)}
-                    placeholder="Custom amount"
-                    max={remaining}
-                    className="flex-grow block w-full px-2 py-1.5 border border-gray-300 rounded-md text-sm"
-                />
-                <button
-                    onClick={() => handlePayment(month, Number(customAmount))}
-                    disabled={updatingFee === month || !customAmount || Number(customAmount) <= 0 || Number(customAmount) > remaining}
-                    className="px-3 py-1.5 text-sm bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:bg-gray-400"
+        return (
+            <div className="relative flex items-center gap-2">
+                <span className={`badge ${actualPaid > 0 ? 'bg-yellow-100 text-yellow-700' : 'bg-rose-100 text-rose-700'}`}>
+                    {actualPaid > 0 ? `Partial (₹${remaining})` : 'Dues'}
+                </span>
+                <button 
+                    onClick={() => setPaymentAction({ month: monthKey as string, remaining })}
+                    className="p-1 text-xs bg-indigo-600 text-white rounded hover:bg-indigo-700 transition-colors px-2 font-bold"
                 >
                     Pay
                 </button>
+                {isActionOpen && (
+                    <div className="absolute bottom-full right-0 mb-2 w-48 bg-white border border-gray-200 shadow-2xl rounded-xl p-3 z-50 animate-fade-in">
+                        <p className="text-[10px] font-black text-gray-400 uppercase mb-2">Record Payment</p>
+                        <button 
+                            onClick={() => handlePayment(monthKey, remaining)}
+                            className="w-full text-xs py-2 bg-emerald-600 text-white rounded-lg font-black mb-2 hover:bg-emerald-700"
+                        >
+                            Full: ₹{remaining}
+                        </button>
+                        <div className="flex gap-1">
+                            <input 
+                                type="number" 
+                                placeholder="Amt" 
+                                value={customAmount}
+                                onChange={(e) => setCustomAmount(e.target.value)}
+                                className="w-full text-xs p-2 border rounded-lg outline-none focus:border-indigo-500"
+                            />
+                            <button 
+                                onClick={() => handlePayment(monthKey, parseFloat(customAmount))}
+                                className="px-3 bg-indigo-600 text-white rounded-lg font-black"
+                            >&rarr;</button>
+                        </div>
+                        <button onClick={() => setPaymentAction(null)} className="absolute -top-2 -right-2 w-5 h-5 bg-gray-400 text-white rounded-full text-xs">&times;</button>
+                    </div>
+                )}
             </div>
-            <button onClick={() => { setPaymentAction(null); setCustomAmount(''); }} className="absolute -top-2 -right-2 text-xs bg-gray-600 text-white w-5 h-5 rounded-full">&times;</button>
-        </div>
-    );
-    
-    const generateCalendarDays = (year: number, month: number) => {
-        const days = [];
-        const date = new Date(year, month, 1);
-        const firstDayIndex = date.getDay();
-        const daysInMonth = new Date(year, month + 1, 0).getDate();
-        
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        for (let i = 0; i < firstDayIndex; i++) {
-            days.push(<div key={`empty-${i}`} className="w-8 h-8" />);
-        }
-
-        for (let day = 1; day <= daysInMonth; day++) {
-            const fullDate = new Date(year, month, day);
-            const dateString = `${fullDate.getFullYear()}-${String(fullDate.getMonth() + 1).padStart(2, '0')}-${String(fullDate.getDate()).padStart(2, '0')}`;
-            
-            let statusClass = 'bg-gray-100 text-gray-700 hover:bg-gray-200';
-            let title = '';
-            const status = attendanceStatus.get(dateString);
-
-            if (fullDate > today) {
-                statusClass = 'bg-gray-50 text-gray-400'; // Future
-                title = 'Future Date';
-            } else if (status === 'present') {
-                statusClass = 'bg-green-500 text-white font-bold shadow-sm';
-                title = 'Present';
-            } else if (status === 'absent') {
-                statusClass = 'bg-red-500 text-white font-bold shadow-sm';
-                title = 'Absent';
-            } else if (!classAttendanceDates.has(dateString)) {
-                statusClass = 'bg-yellow-100 text-yellow-800 font-bold';
-                title = 'Holiday / No School';
-            } else {
-                title = 'No Data';
-            }
-
-            days.push(
-                <div key={day} className={`w-8 h-8 flex items-center justify-center rounded-full text-xs transition-colors duration-200 ${statusClass}`} title={title}>
-                    {day}
-                </div>
-            );
-        }
-        return days;
+        );
     };
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center z-50 p-4">
-            <div className="bg-gray-50 p-8 rounded-2xl shadow-2xl w-full max-w-7xl max-h-[95vh] flex flex-col">
-                <div className="flex justify-between items-center mb-6 flex-shrink-0">
-                    <h2 className="text-3xl font-bold text-gray-800">Student Profile</h2>
-                    <button onClick={onClose} className="text-gray-500 hover:text-gray-800 text-4xl leading-none">&times;</button>
-                </div>
-                
-                {/* Tabs */}
-                <div className="flex space-x-1 bg-gray-200 p-1 rounded-lg mb-4 w-fit">
-                    <button onClick={() => setActiveTab('info')} className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'info' ? 'bg-white text-primary shadow' : 'text-gray-600 hover:bg-gray-300'}`}>Profile Info</button>
-                    <button onClick={() => setActiveTab('fees')} className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'fees' ? 'bg-white text-primary shadow' : 'text-gray-600 hover:bg-gray-300'}`}>Academic Fees</button>
-                    <button onClick={() => setActiveTab('hostel')} className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'hostel' ? 'bg-white text-primary shadow' : 'text-gray-600 hover:bg-gray-300'}`}>Hostel Details</button>
-                </div>
-
-                {error && <div className="p-3 mb-4 text-sm bg-red-100 text-red-700 rounded-md flex-shrink-0">{error}</div>}
-                
-                <div className="overflow-y-auto pr-4 -mr-4 flex-1">
-                    
-                    {/* General Profile Section - Always Visible on Left for large screens */}
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                        
-                        <div className="lg:col-span-1 space-y-6">
-                            <div className="bg-white p-6 rounded-xl shadow-md text-center">
-                                <img src={student.photo_url || `https://ui-avatars.com/api/?name=${student.name}&background=e8e8e8&color=555&size=128&bold=true`} alt={student.name} className="w-32 h-32 rounded-full object-cover mx-auto border-4 border-primary-dark shadow-lg"/>
-                                <h3 className="text-2xl font-bold text-gray-900 mt-4">{student.name}</h3>
-                                <p className="text-md text-gray-600">Class: {student.class || 'N/A'}</p>
-                                <p className="text-sm text-gray-500 font-mono">Roll No: {student.roll_number || 'N/A'}</p>
-                            </div>
-                            
-                            {activeTab === 'info' && (
-                                <>
-                                    <div className="bg-white p-6 rounded-xl shadow-md space-y-4">
-                                        <h4 className="info-header"><UserCircleIcon /> Personal Information</h4>
-                                        <InfoItem label="Father's Name" value={student.father_name} />
-                                        <InfoItem label="Mother's Name" value={student.mother_name} />
-                                        <InfoItem label="Date of Birth" value={student.date_of_birth ? new Date(student.date_of_birth).toLocaleDateString() : '-'} />
-                                        <InfoItem label="Gender" value={student.gender} />
-                                        <InfoItem label="Blood Group" value={student.blood_group} />
-                                    </div>
-                                    <div className="bg-white p-6 rounded-xl shadow-md space-y-4">
-                                        <h4 className="info-header"><PhoneIcon /> Contact Details</h4>
-                                        <InfoItem label="Mobile" value={student.mobile} />
-                                        <InfoItem label="Gmail" value={student.gmail} />
-                                        <InfoItem label="Address" value={student.address} fullWidth/>
-                                    </div>
-                                    <div className="bg-white p-6 rounded-xl shadow-md space-y-4">
-                                        <h4 className="info-header"><AcademicCapIcon /> Academic Information</h4>
-                                        <InfoItem label="Registration Date" value={new Date(student.registration_date).toLocaleDateString()} />
-                                        <InfoItem label="Aadhar" value={student.aadhar} />
-                                        <InfoItem label="Previous School" value={student.previous_school_name} />
-                                        {assignedDriver && (
-                                            <>
-                                                <div className="pt-2 border-t border-gray-100"></div>
-                                                <div className="flex items-center gap-2 text-primary font-semibold">
-                                                    <TransportIcon className="w-4 h-4"/> Transport Details
-                                                </div>
-                                                <InfoItem label="Driver Name" value={assignedDriver.name} />
-                                                <InfoItem label="Van Number" value={assignedDriver.van_number} />
-                                            </>
-                                        )}
-                                    </div>
-                                </>
-                            )}
-                        </div>
-
-                        {/* Right Content Area changes based on Tab */}
-                        <div className="lg:col-span-2 space-y-6">
-                            
-                            {activeTab === 'info' && (
-                                <div className="bg-white p-6 rounded-xl shadow-md">
-                                    <div className="flex justify-between items-center mb-4">
-                                        <h4 className="text-xl font-bold text-gray-800">Attendance ({currentYear})</h4>
-                                        <button 
-                                            onClick={() => setShowAllAttendance(!showAllAttendance)}
-                                            className="text-sm text-primary hover:text-primary-dark underline"
-                                        >
-                                            {showAllAttendance ? 'Hide History' : 'Show More Attendance Records'}
-                                        </button>
-                                    </div>
-                                    
-                                    <div className="flex flex-wrap items-center gap-4 text-xs mb-4 text-gray-600 bg-gray-50 p-2 rounded-lg">
-                                        <span className="flex items-center gap-1.5"><span className="w-3 h-3 bg-green-500 rounded-sm"></span>Present ({attendanceSummary.present})</span>
-                                        <span className="flex items-center gap-1.5"><span className="w-3 h-3 bg-red-500 rounded-sm"></span>Absent ({attendanceSummary.absent})</span>
-                                        <span className="flex items-center gap-1.5"><span className="w-3 h-3 bg-yellow-100 text-yellow-800 border border-yellow-200 rounded-sm"></span>Holiday</span>
-                                    </div>
-
-                                    {loadingAttendance ? <div className="flex justify-center items-center h-48"><Spinner size="10"/></div> :
-                                    !student.roll_number ? <p className="text-center text-gray-500 py-10">Student has no roll number assigned. Cannot display attendance.</p> :
-                                    (
-                                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 transition-all duration-300">
-                                            {(showAllAttendance ? monthNames : [monthNames[currentMonthIndex]]).map((name, i) => {
-                                                const monthIdx = showAllAttendance ? i : currentMonthIndex;
-                                                return (
-                                                    <div key={name} className="border border-gray-100 rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow">
-                                                        <h5 className="font-bold text-center mb-2 text-gray-700 border-b border-gray-100 pb-1">{name}</h5>
-                                                        <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-semibold text-gray-400 mb-1">
-                                                            <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
-                                                        </div>
-                                                        <div className="grid grid-cols-7 gap-1">
-                                                            {generateCalendarDays(currentYear, monthIdx)}
-                                                        </div>
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-
-                            {activeTab === 'fees' && (
-                                <>
-                                    <div className="bg-white p-6 rounded-xl shadow-md">
-                                        <h4 className="text-xl font-bold text-gray-800 mb-4">Fee Records</h4>
-                                        <div className="grid grid-cols-2 gap-4 mb-4">
-                                            <FeeStatCard label="Monthly Fee" value={`₹${feeAmount.toLocaleString()}`} color="blue" />
-                                            <FeeStatCard label="Previous Dues" value={`₹${(student.previous_dues || 0).toLocaleString()}`} color="orange" />
-                                            <FeeStatCard label="Total Paid" value={`₹${finalTotalPaid.toLocaleString()}`} color="green" />
-                                            <FeeStatCard label="Total Dues" value={`₹${finalTotalDues.toLocaleString()}`} color="red" />
-                                        </div>
-                                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                                            {months.map(month => (
-                                                <div key={month} className="flex justify-between items-center bg-gray-50 p-2.5 rounded-lg">
-                                                    <span className="font-medium text-sm capitalize">{month}</span>
-                                                    {renderFeeStatus(month)}
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                    <div className="bg-white p-6 rounded-xl shadow-md">
-                                        <h4 className="info-header">Other Fees</h4>
-                                        <div className="h-40 overflow-y-auto border border-gray-200 rounded-md">
-                                            {(student.other_fees && student.other_fees.length > 0) ? (
-                                                <table className="min-w-full text-sm">
-                                                    <thead className="bg-gray-50 sticky top-0">
-                                                        <tr>
-                                                            <th className="p-2 text-left font-medium text-gray-500">Fee Name</th>
-                                                            <th className="p-2 text-right font-medium text-gray-500">Amount</th>
-                                                            <th className="p-2 text-center font-medium text-gray-500">Status</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody className="divide-y divide-gray-200">
-                                                        {student.other_fees.map((fee, index) => {
-                                                            const key = `${fee.fees_name}-${fee.dues_date}`;
-                                                            return (
-                                                                <tr key={index}>
-                                                                    <td className="p-2">{fee.fees_name}</td>
-                                                                    <td className="p-2 text-right">₹{fee.amount.toLocaleString()}</td>
-                                                                    <td className="p-2 text-center">
-                                                                        {fee.paid_date ? (
-                                                                            <span className="fee-badge bg-green-100 text-green-800">Paid</span>
-                                                                        ) : (
-                                                                            <button onClick={() => handlePayOtherFee(fee)} disabled={updatingOtherFee === key} className="px-2 py-0.5 text-xs text-white bg-blue-600 rounded hover:bg-blue-700 disabled:bg-gray-400">
-                                                                                {updatingOtherFee === key ? <Spinner size="3" /> : 'Pay'}
-                                                                            </button>
-                                                                        )}
-                                                                    </td>
-                                                                </tr>
-                                                            );
-                                                        })}
-                                                    </tbody>
-                                                </table>
-                                            ) : (
-                                                <p className="text-center text-gray-500 p-4">No other fees found.</p>
-                                            )}
-                                        </div>
-                                    </div>
-                                </>
-                            )}
-
-                            {activeTab === 'hostel' && (
-                                <div className="space-y-6">
-                                    <div className="bg-white p-6 rounded-xl shadow-md border-t-4 border-indigo-500">
-                                        <div className="flex justify-between items-center mb-4">
-                                            <h4 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-                                                <HostelIcon className="w-6 h-6 text-indigo-600" />
-                                                Hostel Details
-                                            </h4>
-                                            {hostelData && (
-                                                <span className={`px-3 py-1 rounded-full text-xs font-bold ${hostelData.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                                                    {hostelData.is_active ? 'ACTIVE RESIDENT' : 'EXITED'}
-                                                </span>
-                                            )}
-                                        </div>
-                                        
-                                        {!hostelData ? (
-                                            <div className="text-center py-10 bg-gray-50 rounded-lg">
-                                                <p className="text-gray-500">This student has not been assigned to a hostel room.</p>
-                                            </div>
-                                        ) : (
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                                <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-100">
-                                                    <p className="text-xs font-bold text-indigo-500 uppercase tracking-wide">Location</p>
-                                                    <div className="mt-2 space-y-1">
-                                                        <p className="text-lg font-bold text-gray-800">{hostelData.building_name}</p>
-                                                        <p className="text-gray-600">{hostelData.floor_name}, Room <strong>{hostelData.room_no}</strong></p>
-                                                    </div>
-                                                </div>
-                                                <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
-                                                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Timeline</p>
-                                                    <div className="mt-2 space-y-1">
-                                                        <p className="text-sm text-gray-700">Joined: <strong>{new Date(hostelData.joining_date).toLocaleDateString()}</strong></p>
-                                                        {hostelData.exit_date && <p className="text-sm text-red-600">Exited: <strong>{new Date(hostelData.exit_date).toLocaleDateString()}</strong></p>}
-                                                        <p className="text-sm text-gray-700">Monthly Rent: <strong>₹{hostelData.monthly_fee}</strong></p>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    {hostelData && (
-                                        <>
-                                            <div className="bg-white p-6 rounded-xl shadow-md">
-                                                <div className="flex justify-between items-center mb-4">
-                                                    <h4 className="text-lg font-bold text-gray-800">Hostel Fee Ledger</h4>
-                                                    
-                                                    {/* Manual Due Addition - Simple Popover or Inline */}
-                                                    <div className="flex gap-2 items-center">
-                                                        <input 
-                                                            type="text" placeholder="Desc" className="border p-1 text-xs w-20 rounded"
-                                                            value={hostelDueDesc} onChange={e => setHostelDueDesc(e.target.value)}
-                                                        />
-                                                        <input 
-                                                            type="number" placeholder="Amt" className="border p-1 text-xs w-16 rounded"
-                                                            value={hostelDueAmount} onChange={e => setHostelDueAmount(e.target.value)}
-                                                        />
-                                                        <button onClick={handleAddManualHostelDue} disabled={hostelDueProcessing} className="bg-red-50 text-red-600 text-xs px-2 py-1 rounded border border-red-200 hover:bg-red-100">
-                                                            + Due
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                                
-                                                <div className="grid grid-cols-2 gap-4 mb-4">
-                                                    <div className="bg-green-50 p-3 rounded-lg text-center border border-green-100">
-                                                        <p className="text-xs font-bold text-green-600 uppercase">Total Paid</p>
-                                                        <p className="text-xl font-bold text-green-900">₹{hostelTotalPaid.toLocaleString()}</p>
-                                                    </div>
-                                                    <div className="bg-red-50 p-3 rounded-lg text-center border border-red-100">
-                                                        <p className="text-xs font-bold text-red-600 uppercase">Balance Pending</p>
-                                                        <p className="text-xl font-bold text-green-900">₹{hostelTotalDues.toLocaleString()}</p>
-                                                    </div>
-                                                </div>
-
-                                                <div className="overflow-x-auto border border-gray-200 rounded-lg max-h-80 overflow-y-auto">
-                                                    <table className="min-w-full divide-y divide-gray-200 text-sm">
-                                                        <thead className="bg-gray-50 sticky top-0">
-                                                            <tr>
-                                                                <th className="px-4 py-2 text-left font-medium text-gray-500">Month / Description</th>
-                                                                <th className="px-4 py-2 text-right font-medium text-gray-500">Total</th>
-                                                                <th className="px-4 py-2 text-right font-medium text-gray-500">Paid</th>
-                                                                <th className="px-4 py-2 text-right font-medium text-gray-500">Balance</th>
-                                                                <th className="px-4 py-2 text-center font-medium text-gray-500">Action</th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody className="bg-white divide-y divide-gray-200">
-                                                            {hostelData.fee_records && hostelData.fee_records.length > 0 ? (
-                                                                hostelData.fee_records.map((rec, idx) => {
-                                                                    const paid = rec.paid_amount || 0;
-                                                                    const balance = rec.amount - paid;
-                                                                    return (
-                                                                        <tr key={idx}>
-                                                                            <td className="px-4 py-3 font-medium text-gray-800">{rec.description || rec.month}</td>
-                                                                            <td className="px-4 py-3 text-right text-gray-600">₹{rec.amount}</td>
-                                                                            <td className="px-4 py-3 text-right text-green-600">₹{paid}</td>
-                                                                            <td className="px-4 py-3 text-right text-red-600 font-bold">₹{balance}</td>
-                                                                            <td className="px-4 py-3 text-center">
-                                                                                {rec.status === 'Paid' ? (
-                                                                                    <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full font-bold">PAID</span>
-                                                                                ) : (
-                                                                                    <div className="relative">
-                                                                                        {paymentModalData?.recordId === rec.id ? (
-                                                                                            <div className="absolute right-0 top-0 mt-8 z-10 bg-white shadow-xl border border-gray-200 p-3 rounded-lg w-48 text-left">
-                                                                                                <p className="text-xs font-bold mb-1 text-gray-700">Pay for {rec.month}</p>
-                                                                                                <input 
-                                                                                                    type="number" 
-                                                                                                    className="border p-1 w-full text-sm mb-2 rounded" 
-                                                                                                    value={hostelPaymentAmount}
-                                                                                                    onChange={e => setHostelPaymentAmount(e.target.value)}
-                                                                                                    max={balance}
-                                                                                                />
-                                                                                                <div className="flex justify-between">
-                                                                                                    <button onClick={() => setPaymentModalData(null)} className="text-xs text-gray-500">Cancel</button>
-                                                                                                    <button onClick={submitHostelPayment} disabled={hostelPaymentProcessing} className="text-xs bg-green-600 text-white px-2 py-1 rounded">
-                                                                                                        {hostelPaymentProcessing ? '...' : 'Confirm'}
-                                                                                                    </button>
-                                                                                                </div>
-                                                                                            </div>
-                                                                                        ) : null}
-                                                                                        <button 
-                                                                                            onClick={() => openHostelPaymentModal(rec)} 
-                                                                                            className="bg-indigo-600 text-white px-3 py-1 rounded text-xs hover:bg-indigo-700 shadow-sm"
-                                                                                        >
-                                                                                            Pay
-                                                                                        </button>
-                                                                                    </div>
-                                                                                )}
-                                                                            </td>
-                                                                        </tr>
-                                                                    );
-                                                                })
-                                                            ) : (
-                                                                <tr>
-                                                                    <td colSpan={5} className="px-4 py-4 text-center text-gray-500">No fee records found.</td>
-                                                                </tr>
-                                                            )}
-                                                        </tbody>
-                                                    </table>
-                                                </div>
-                                            </div>
-                                        </>
-                                    )}
-                                </div>
-                            )}
-
-                        </div>
+        <div className="fixed inset-0 bg-gray-900/80 backdrop-blur-sm flex justify-center items-center z-50 p-4">
+            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-6xl max-h-[90vh] flex flex-col overflow-hidden border border-white/20">
+                <div className="px-8 py-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+                    <div>
+                        <h2 className="text-3xl font-black text-gray-900 tracking-tight">Student Profile</h2>
+                        <p className="text-indigo-600 font-bold text-sm">Class {student.class} | Roll {student.roll_number}</p>
                     </div>
+                    <button onClick={onClose} className="text-gray-400 hover:text-red-500 transition-colors text-4xl leading-none">&times;</button>
+                </div>
+
+                <div className="flex p-2 bg-gray-100/50 gap-1 overflow-x-auto no-scrollbar">
+                    {['info', 'fees', 'all-years'].map((tab) => (
+                        <button key={tab} onClick={() => setActiveTab(tab as any)} className={`px-6 py-3 rounded-2xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === tab ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>
+                            {tab.replace('-', ' ')}
+                        </button>
+                    ))}
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-8">
+                    {activeTab === 'info' && (
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
+                            <div className="flex flex-col items-center gap-6">
+                                <img src={student.photo_url || `https://ui-avatars.com/api/?name=${student.name}&background=4f46e5&color=fff&size=256`} className="w-48 h-48 rounded-[2rem] object-cover shadow-2xl border-4 border-white" alt=""/>
+                                <div className="text-center">
+                                    <h3 className="text-2xl font-black text-gray-900">{student.name}</h3>
+                                    <p className="text-gray-500 font-medium">Joined: {new Date(student.registration_date).toLocaleDateString()}</p>
+                                </div>
+                            </div>
+                            <div className="lg:col-span-2 space-y-8">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <InfoBox label="Guardian Name" value={student.father_name} icon={<UserCircleIcon />} />
+                                    <InfoBox label="Primary Contact" value={student.mobile} icon={<PhoneIcon />} />
+                                    <InfoBox label="Mother's Name" value={student.mother_name} icon={<UserCircleIcon />} />
+                                    <InfoBox label="Date of Birth" value={student.date_of_birth} icon={<AcademicCapIcon />} />
+                                    <InfoBox label="Aadhar Card" value={student.aadhar} icon={<AcademicCapIcon />} />
+                                    <InfoBox label="Home Address" value={student.address} icon={<RupeeIcon />} />
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {activeTab === 'fees' && (
+                        <div className="space-y-8">
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+                                <SummaryCard label="Monthly Projected" value={`₹${monthlyFee}`} color="blue" />
+                                <SummaryCard label="Paid (Current)" value={`₹${feeStats.totalPaid}`} color="emerald" />
+                                <SummaryCard label="Total Dues" value={`₹${feeStats.totalDues}`} color="rose" />
+                            </div>
+                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                                {monthKeys.map((key, idx) => (
+                                    <div key={key} className="bg-gray-50 p-4 rounded-2xl border border-gray-100 flex flex-col justify-between min-h-[100px] hover:bg-gray-100 transition-colors">
+                                        <p className="font-black text-gray-800 text-sm">{monthNames[idx]}</p>
+                                        <div className="mt-2">{renderFeeBadge(key)}</div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {activeTab === 'all-years' && (
+                        <div className="text-center py-20 bg-gray-50 rounded-[3rem] border-4 border-dashed border-gray-100 max-w-2xl mx-auto">
+                            <RupeeIcon className="w-16 h-16 mx-auto mb-4 opacity-10" />
+                            <h3 className="text-xl font-black text-gray-400">Archived Financial Records</h3>
+                            <p className="text-gray-400 mt-2 px-10">Detailed cross-session analysis for previous years (2020-2023) is visible for migrated student accounts only.</p>
+                            <div className="mt-8 inline-block px-8 py-4 bg-white rounded-3xl shadow-sm border border-gray-100">
+                                <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Opening Session Arrears</p>
+                                <p className="text-3xl font-black text-gray-800 mt-1">₹{feeStats.previousDues.toLocaleString()}</p>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
             <style>{`
-                .info-header { display: flex; align-items: center; gap: 0.5rem; font-size: 1.125rem; font-weight: 700; color: #374151; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.5rem; margin-bottom: 1rem; }
-                .fee-badge { padding: 0.125rem 0.5rem; font-size: 0.75rem; font-weight: 500; border-radius: 9999px; white-space: nowrap; }
+                .badge { padding: 4px 12px; border-radius: 9999px; font-size: 10px; font-weight: 800; text-transform: uppercase; white-space: nowrap; }
             `}</style>
         </div>
     );
 };
 
-const InfoItem = ({ label, value, fullWidth = false }: { label: string, value?: string | null, fullWidth?: boolean }) => (
-    <div className={fullWidth ? 'col-span-full' : ''}>
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{label}</p>
-        <p className="mt-1 text-sm text-gray-900">{value || '-'}</p>
+const InfoBox = ({ label, value, icon }: any) => (
+    <div className="bg-gray-50 p-5 rounded-2xl border border-gray-100 flex items-center gap-4">
+        <div className="p-3 bg-white rounded-xl shadow-sm text-indigo-600">{icon}</div>
+        <div>
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{label}</p>
+            <p className="font-black text-gray-800 truncate max-w-[200px]">{value || '-'}</p>
+        </div>
     </div>
 );
 
-const FeeStatCard = ({ label, value, color }: { label: string, value: string, color: 'blue'|'green'|'red'|'orange' }) => {
-    const colors = {
-        blue: 'bg-blue-50 text-blue-800',
-        green: 'bg-green-50 text-green-800',
-        red: 'bg-red-50 text-red-800',
-        orange: 'bg-orange-50 text-orange-800',
+const SummaryCard = ({ label, value, color }: any) => {
+    const colors: any = {
+        blue: 'bg-blue-50 text-blue-800 border-blue-100',
+        emerald: 'bg-emerald-50 text-emerald-800 border-emerald-100',
+        rose: 'bg-rose-50 text-rose-800 border-rose-100'
     };
     return (
-        <div className={`p-3 rounded-lg text-center ${colors[color]}`}>
-            <p className="text-xs font-medium uppercase">{label}</p>
-            <p className="text-xl font-bold">{value}</p>
+        <div className={`p-6 rounded-3xl border-2 text-center shadow-sm ${colors[color]}`}>
+            <p className="text-[10px] font-black uppercase tracking-widest opacity-60">{label}</p>
+            <p className="text-3xl font-black mt-1">{value}</p>
         </div>
     );
-}
-
+};
 
 export default StudentProfileModal;

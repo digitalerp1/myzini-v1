@@ -59,7 +59,7 @@ const AnalysisAttendance: React.FC = () => {
                     }
                 });
 
-                // FIX: Casting date to string on line 56 to avoid unknown type error
+                // FIX: Explicitly cast 'date' from Map entries to string for Date constructor on line 57
                 const trendData = Array.from(last7DaysMap.entries()).map(([date, val]) => ({
                     label: new Date(date as string).toLocaleDateString('en-US', { day: 'numeric', month: 'short' }),
                     value: val
