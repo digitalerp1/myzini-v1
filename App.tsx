@@ -59,13 +59,30 @@ const App: React.FC = () => {
       // 1. Check for Admin Session
       const { data: { session } } = await supabase.auth.getSession();
       
-      // 2. Check for Student Session (LocalStorage)
+      // 2. Check for Student Session in LocalStorage
       const storedStudent = localStorage.getItem('student_session');
+      // 3. Check for Persistent Login Token
+      const storedToken = localStorage.getItem('student_token');
       
       if (session) {
         setSession(session);
       } else if (storedStudent) {
         setStudentSession(JSON.parse(storedStudent));
+      } else if (storedToken) {
+          // Attempt auto-login with token
+          try {
+              const { data, error } = await supabase.rpc('student_login_by_token', { token_input: storedToken });
+              if (data && Array.isArray(data) && data.length > 0) {
+                   setStudentSession(data);
+                   localStorage.setItem('student_session', JSON.stringify(data));
+              } else {
+                   // Invalid token, clear it
+                   localStorage.removeItem('student_token');
+              }
+          } catch (e) {
+              console.error("Auto login failed", e);
+              localStorage.removeItem('student_token');
+          }
       }
       
       setLoading(false);
@@ -88,6 +105,9 @@ const App: React.FC = () => {
          setSession(null);
          setStudentSession(null);
          localStorage.removeItem('student_session');
+         // We do not remove 'student_token' on explicit sign out unless the user wants to clear the device
+         // But for security, usually logout means clearing everything.
+         localStorage.removeItem('student_token');
          navigate('/');
       }
     });
@@ -117,6 +137,7 @@ const App: React.FC = () => {
         <Routes>
             <Route path="/student-dashboard" element={<StudentDashboard student={studentSession} onLogout={() => {
                 localStorage.removeItem('student_session');
+                localStorage.removeItem('student_token'); // Clear persistent token on logout
                 setStudentSession(null);
                 navigate('/');
             }} />} />

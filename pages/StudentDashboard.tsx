@@ -1,8 +1,9 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Student } from '../types';
 import LogoutIcon from '../components/icons/LogoutIcon';
 import UserCircleIcon from '../components/icons/UserCircleIcon';
+import CalendarIcon from '../components/icons/CalendarIcon';
 
 interface AggregatedStudentData {
     student_profile: Student;
@@ -12,6 +13,12 @@ interface AggregatedStudentData {
         principal_name?: string;
         school_image_url?: string;
         mobile?: string;
+        website?: string;
+    };
+    class_info?: {
+        school_fees: number;
+        class_teacher?: { name: string; mobile: string };
+        time_table?: { subject: string; teacher: string; time: string }[];
     };
     exam_results: any[];
     attendance_records: { date: string; status: 'Present' | 'Absent' | 'Holiday' }[];
@@ -22,249 +29,471 @@ interface StudentDashboardProps {
     onLogout: () => void;
 }
 
+const months = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+// Helper to parse paid amount
+const parsePaidAmount = (status: string | undefined | null): number => {
+    if (!status || status === 'undefined' || status === 'Dues') return 0;
+    if (/^\d{4}-\d{2}-\d{2}/.test(status) && !status.includes('=')) return Infinity;
+    return status.split(';').reduce((total, p) => {
+        const parts = p.split('=d=');
+        return total + (parts.length === 2 ? parseFloat(parts[0]) || 0 : 0);
+    }, 0);
+};
+
 const StudentDashboard: React.FC<StudentDashboardProps> = ({ student: studentsData, onLogout }) => {
-    // State to handle which sibling is currently selected
     const [selectedStudentIndex, setSelectedStudentIndex] = useState(0);
-    const [activeTab, setActiveTab] = useState<'profile' | 'fees' | 'attendance' | 'results'>('profile');
+    const [activeTab, setActiveTab] = useState<'profile' | 'fees' | 'attendance' | 'results' | 'routine'>('profile');
 
-    // Access current student data securely from the prop
     const currentData = studentsData[selectedStudentIndex];
-    const { student_profile: profile, school_info: school, exam_results: examResults, attendance_records: attendanceData } = currentData;
+    const { student_profile: profile, school_info: school, exam_results: examResults, attendance_records: attendanceData, class_info } = currentData;
+    
+    const monthlyFee = class_info?.school_fees || 0;
+    const classTeacher = class_info?.class_teacher;
+    const timeTable = class_info?.time_table || [];
 
-    const months = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+    // --- FEE CALCULATION LOGIC ---
+    let totalFeesPaid = 0;
+    let totalFeesDue = 0;
 
-    const parseFeeStatus = (status: string | undefined) => {
-        if (!status || status === 'undefined') return { label: 'Pending', color: 'bg-gray-100 text-gray-600' };
-        if (status === 'Dues') return { label: 'Unpaid', color: 'bg-red-100 text-red-600' };
-        if (status.includes('=d=') || /^\d{4}-\d{2}-\d{2}/.test(status)) {
-             return { label: 'Paid', color: 'bg-green-100 text-green-600' };
+    const feeLedger = months.map((monthKey, index) => {
+        const status = profile[monthKey as keyof Student] as string | undefined;
+        let paid = 0;
+        let due = 0;
+        let statusText = 'Pending';
+        let statusColor = 'bg-gray-100 text-gray-500';
+
+        const parsedPaid = parsePaidAmount(status);
+        if (parsedPaid === Infinity) paid = monthlyFee;
+        else paid = parsedPaid;
+
+        const currentMonthIndex = new Date().getMonth();
+        const isPastOrCurrent = index <= currentMonthIndex;
+
+        if (isPastOrCurrent) {
+            if (paid >= monthlyFee) {
+                due = 0; statusText = 'Paid'; statusColor = 'bg-green-100 text-green-700';
+            } else if (paid > 0) {
+                due = monthlyFee - paid; statusText = 'Partial'; statusColor = 'bg-yellow-100 text-yellow-700';
+            } else if (status === 'Dues') {
+                due = monthlyFee; statusText = 'Due'; statusColor = 'bg-red-100 text-red-700';
+            } else {
+                due = monthlyFee; statusText = 'Due'; statusColor = 'bg-red-100 text-red-700';
+            }
+        } else {
+            due = monthlyFee; statusText = 'Upcoming';
         }
-        return { label: 'Pending', color: 'bg-gray-100 text-gray-600' };
-    };
+
+        totalFeesPaid += paid;
+        if(isPastOrCurrent) totalFeesDue += due;
+
+        return { month: monthNames[index], feeAmount: monthlyFee, paidAmount: paid, dueAmount: due, statusText, statusColor };
+    });
+
+    if(profile.previous_dues) totalFeesDue += profile.previous_dues;
+
+    // Calculate Other Fees
+    const otherFees = profile.other_fees || [];
+    otherFees.forEach(f => {
+        if(f.paid_date) totalFeesPaid += f.amount;
+        else totalFeesDue += f.amount;
+    });
 
     return (
         <div className="min-h-screen bg-gray-50 font-sans">
-            {/* Header */}
-            <div className="bg-green-600 text-white p-4 shadow-lg sticky top-0 z-20">
-                <div className="max-w-5xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
-                    <div className="flex items-center gap-4">
-                        {school.school_image_url && (
-                            <img src={school.school_image_url} alt="Logo" className="w-12 h-12 bg-white rounded-full p-1 object-contain" />
-                        )}
-                        <div>
-                            <h1 className="text-xl font-bold leading-tight">{school.school_name}</h1>
-                            <p className="text-sm opacity-90 text-green-100">Student Portal</p>
+            {/* --- Header Section --- */}
+            <header className="bg-white shadow-sm sticky top-0 z-30">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                    <div className="flex justify-between items-center h-16">
+                        <div className="flex items-center gap-3">
+                            {school.school_image_url ? (
+                                <img className="h-10 w-10 rounded-full object-contain bg-gray-50 border" src={school.school_image_url} alt="Logo" />
+                            ) : (
+                                <div className="h-10 w-10 rounded-full bg-indigo-600 flex items-center justify-center text-white font-bold text-xl">
+                                    {school.school_name.charAt(0)}
+                                </div>
+                            )}
+                            <div>
+                                <h1 className="text-lg font-bold text-gray-900 leading-tight hidden sm:block">{school.school_name}</h1>
+                                <span className="text-xs text-indigo-600 font-semibold uppercase tracking-wider">Student Portal</span>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center gap-4">
+                            {studentsData.length > 1 && (
+                                <div className="relative">
+                                    <select 
+                                        className="appearance-none bg-indigo-50 border border-indigo-100 text-indigo-700 py-1.5 pl-3 pr-8 rounded-full text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                                        value={selectedStudentIndex}
+                                        onChange={(e) => setSelectedStudentIndex(Number(e.target.value))}
+                                    >
+                                        {studentsData.map((s, idx) => (
+                                            <option key={idx} value={idx}>{s.student_profile.name}</option>
+                                        ))}
+                                    </select>
+                                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-indigo-700">
+                                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                                    </div>
+                                </div>
+                            )}
+                            <button onClick={onLogout} className="flex items-center gap-2 text-gray-500 hover:text-red-600 transition-colors text-sm font-medium">
+                                <LogoutIcon className="w-5 h-5" /> <span className="hidden sm:inline">Logout</span>
+                            </button>
                         </div>
                     </div>
-
-                    <div className="flex items-center gap-4">
-                        {/* Sibling Selector */}
-                        {studentsData.length > 1 && (
-                            <select 
-                                className="bg-green-700 text-white text-sm border border-green-500 rounded px-3 py-2 outline-none focus:ring-2 focus:ring-green-400"
-                                value={selectedStudentIndex}
-                                onChange={(e) => setSelectedStudentIndex(Number(e.target.value))}
-                            >
-                                {studentsData.map((s, idx) => (
-                                    <option key={idx} value={idx}>{s.student_profile.name} ({s.student_profile.class})</option>
-                                ))}
-                            </select>
-                        )}
-                        <button onClick={onLogout} className="flex items-center gap-2 bg-green-800 hover:bg-green-900 px-4 py-2 rounded-lg transition-colors text-sm font-medium">
-                            <LogoutIcon className="w-4 h-4" /> Logout
-                        </button>
-                    </div>
                 </div>
-            </div>
+            </header>
 
-            {/* Main Content */}
-            <div className="max-w-5xl mx-auto p-4 mt-6 pb-20">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    
-                    {/* Sidebar / Profile Card */}
-                    <div className="space-y-6">
-                        <div className="bg-white rounded-xl shadow-md p-6 text-center border border-gray-100 relative overflow-hidden">
-                            <div className="absolute top-0 left-0 w-full h-20 bg-green-50 z-0"></div>
-                            <div className="relative z-10">
-                                <img 
-                                    src={profile.photo_url || `https://ui-avatars.com/api/?name=${profile.name}&background=16a34a&color=fff`} 
-                                    alt="Profile" 
-                                    className="w-28 h-28 rounded-full mx-auto border-4 border-white shadow-md object-cover"
-                                />
-                                <h2 className="text-xl font-bold text-gray-800 mt-4">{profile.name}</h2>
-                                <p className="text-green-600 font-medium bg-green-50 inline-block px-3 py-1 rounded-full text-sm mt-1 border border-green-100">
-                                    {profile.class} | Roll: {profile.roll_number}
-                                </p>
+            <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                
+                {/* --- Tab Navigation --- */}
+                <div className="flex space-x-1 bg-white p-1 rounded-xl shadow-sm mb-8 overflow-x-auto">
+                    {['profile', 'fees', 'routine', 'results', 'attendance'].map((tab) => (
+                        <button
+                            key={tab}
+                            onClick={() => setActiveTab(tab as any)}
+                            className={`flex-1 py-3 px-4 rounded-lg text-sm font-semibold transition-all duration-200 capitalize whitespace-nowrap
+                                ${activeTab === tab 
+                                    ? 'bg-indigo-600 text-white shadow-md transform scale-105' 
+                                    : 'text-gray-500 hover:bg-gray-50 hover:text-indigo-600'
+                                }`}
+                        >
+                            {tab}
+                        </button>
+                    ))}
+                </div>
+
+                {/* --- TAB CONTENT --- */}
+
+                {/* 1. PROFILE TAB */}
+                {activeTab === 'profile' && (
+                    <div className="animate-fade-in-up">
+                        <div className="bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-100">
+                            <div className="h-40 bg-gradient-to-r from-indigo-600 to-purple-600 relative">
+                                <div className="absolute inset-0 opacity-20 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]"></div>
+                            </div>
+                            
+                            <div className="relative px-6 sm:px-10 pb-10">
+                                <div className="flex flex-col sm:flex-row items-center sm:items-end -mt-16 mb-8 gap-6">
+                                    <div className="relative">
+                                        <img 
+                                            src={profile.photo_url || `https://ui-avatars.com/api/?name=${profile.name}&background=fff&color=4f46e5&size=256&bold=true`} 
+                                            alt="Profile" 
+                                            className="w-32 h-32 rounded-full border-4 border-white shadow-lg object-cover bg-white"
+                                        />
+                                        <div className="absolute bottom-2 right-2 w-5 h-5 bg-green-400 border-2 border-white rounded-full"></div>
+                                    </div>
+                                    <div className="text-center sm:text-left flex-1">
+                                        <h2 className="text-3xl font-bold text-gray-900">{profile.name}</h2>
+                                        <p className="text-indigo-600 font-medium text-lg">{profile.class} <span className="text-gray-300 mx-2">|</span> Roll No: {profile.roll_number}</p>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-8">
+                                    <div className="space-y-6">
+                                        <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider border-b pb-2">Personal Details</h3>
+                                        <InfoRow label="Date of Birth" value={profile.date_of_birth ? new Date(profile.date_of_birth).toLocaleDateString() : 'N/A'} icon="🎂" />
+                                        <InfoRow label="Gender" value={profile.gender} icon="⚥" />
+                                        <InfoRow label="Blood Group" value={profile.blood_group} icon="🩸" />
+                                        <InfoRow label="Caste/Category" value={profile.caste} icon="🏷️" />
+                                    </div>
+                                    <div className="space-y-6">
+                                        <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider border-b pb-2">Family & Contact</h3>
+                                        <InfoRow label="Father's Name" value={profile.father_name} icon="👨" />
+                                        <InfoRow label="Mother's Name" value={profile.mother_name} icon="👩" />
+                                        <InfoRow label="Mobile Number" value={profile.mobile} icon="📱" />
+                                        <InfoRow label="Address" value={profile.address} icon="📍" />
+                                    </div>
+                                </div>
                                 
-                                <div className="mt-6 pt-4 text-left text-sm space-y-3 border-t border-gray-100">
-                                    <p className="flex justify-between"><span className="text-gray-500">Father:</span> <span className="font-medium text-gray-900">{profile.father_name}</span></p>
-                                    <p className="flex justify-between"><span className="text-gray-500">Mobile:</span> <span className="font-medium text-gray-900">{profile.mobile}</span></p>
-                                    <p className="flex justify-between"><span className="text-gray-500">DOB:</span> <span className="font-medium text-gray-900">{profile.date_of_birth}</span></p>
+                                {/* Class Teacher Section */}
+                                {classTeacher && (
+                                    <div className="mt-8 bg-blue-50 p-4 rounded-xl border border-blue-100 flex items-center gap-4">
+                                        <div className="bg-blue-200 p-2 rounded-full text-blue-700">
+                                            <UserCircleIcon />
+                                        </div>
+                                        <div>
+                                            <p className="text-xs font-bold text-blue-500 uppercase">Class Teacher</p>
+                                            <p className="font-bold text-gray-800">{classTeacher.name}</p>
+                                            <p className="text-sm text-gray-600">{classTeacher.mobile}</p>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
+                
+                {/* 2. ROUTINE TAB */}
+                {activeTab === 'routine' && (
+                    <div className="animate-fade-in-up">
+                        <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+                            <div className="p-6 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
+                                <h3 className="font-bold text-gray-800 flex items-center gap-2"><CalendarIcon /> Daily Class Routine</h3>
+                                <span className="text-sm bg-white border px-3 py-1 rounded text-gray-600">Class {profile.class}</span>
+                            </div>
+                            
+                            {timeTable.length === 0 ? (
+                                <div className="p-12 text-center text-gray-500">
+                                    <p>No routine has been uploaded for your class yet.</p>
+                                </div>
+                            ) : (
+                                <div className="overflow-x-auto">
+                                    <table className="min-w-full text-sm">
+                                        <thead className="bg-white text-gray-500 border-b">
+                                            <tr>
+                                                <th className="px-6 py-3 text-left">Time</th>
+                                                <th className="px-6 py-3 text-left">Subject</th>
+                                                <th className="px-6 py-3 text-left">Teacher</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-100">
+                                            {timeTable.map((slot, idx) => (
+                                                <tr key={idx} className="hover:bg-gray-50">
+                                                    <td className="px-6 py-4 font-mono font-bold text-indigo-600">{slot.time}</td>
+                                                    <td className="px-6 py-4 font-semibold text-gray-800">{slot.subject}</td>
+                                                    <td className="px-6 py-4 text-gray-600">{slot.teacher || 'N/A'}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
+
+                {/* 3. FEES TAB */}
+                {activeTab === 'fees' && (
+                    <div className="animate-fade-in-up space-y-8">
+                        {/* Fee Summary Cards */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <div className="bg-white p-6 rounded-xl shadow-md border-l-4 border-indigo-500">
+                                <p className="text-sm font-semibold text-gray-500 uppercase">Total Payable</p>
+                                <p className="text-3xl font-bold text-gray-800 mt-1">₹{(totalFeesPaid + totalFeesDue).toLocaleString()}</p>
+                            </div>
+                            <div className="bg-white p-6 rounded-xl shadow-md border-l-4 border-green-500">
+                                <p className="text-sm font-semibold text-gray-500 uppercase">Total Paid</p>
+                                <p className="text-3xl font-bold text-green-600 mt-1">₹{totalFeesPaid.toLocaleString()}</p>
+                            </div>
+                            <div className="bg-white p-6 rounded-xl shadow-md border-l-4 border-red-500">
+                                <p className="text-sm font-semibold text-gray-500 uppercase">Total Due</p>
+                                <p className="text-3xl font-bold text-red-600 mt-1">₹{totalFeesDue.toLocaleString()}</p>
+                            </div>
+                        </div>
+
+                        {/* Detailed Ledger */}
+                        <div className="bg-white rounded-xl shadow-lg overflow-hidden border border-gray-200">
+                            <div className="px-6 py-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
+                                <h3 className="font-bold text-gray-800">Fee Ledger</h3>
+                                <span className="text-xs font-mono text-gray-500 bg-white px-2 py-1 rounded border">Tuition: ₹{monthlyFee}/mo</span>
+                            </div>
+                            <div className="overflow-x-auto">
+                                <table className="min-w-full text-sm text-left">
+                                    <thead className="text-xs text-gray-500 uppercase bg-gray-50 border-b">
+                                        <tr>
+                                            <th className="px-6 py-3">Description</th>
+                                            <th className="px-6 py-3 text-right">Amount</th>
+                                            <th className="px-6 py-3 text-right">Paid</th>
+                                            <th className="px-6 py-3 text-right">Due</th>
+                                            <th className="px-6 py-3 text-center">Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100">
+                                        {profile.previous_dues && profile.previous_dues > 0 && (
+                                            <tr className="bg-red-50/30">
+                                                <td className="px-6 py-4 font-bold text-red-800">Previous Dues</td>
+                                                <td className="px-6 py-4 text-right text-gray-500">-</td>
+                                                <td className="px-6 py-4 text-right text-gray-500">-</td>
+                                                <td className="px-6 py-4 text-right font-bold text-red-600">₹{profile.previous_dues}</td>
+                                                <td className="px-6 py-4 text-center"><span className="px-2 py-1 rounded-full text-xs font-bold bg-red-100 text-red-700">Due</span></td>
+                                            </tr>
+                                        )}
+                                        {feeLedger.map((row, idx) => (
+                                            <tr key={idx} className="hover:bg-gray-50 transition-colors">
+                                                <td className="px-6 py-4 font-medium text-gray-900">{row.month}</td>
+                                                <td className="px-6 py-4 text-right text-gray-600">₹{row.feeAmount}</td>
+                                                <td className="px-6 py-4 text-right font-medium text-green-600">{row.paidAmount > 0 ? `₹${row.paidAmount}` : '-'}</td>
+                                                <td className="px-6 py-4 text-right font-bold text-red-600">{row.dueAmount > 0 ? `₹${row.dueAmount}` : '-'}</td>
+                                                <td className="px-6 py-4 text-center"><span className={`px-3 py-1 rounded-full text-xs font-bold ${row.statusColor}`}>{row.statusText}</span></td>
+                                            </tr>
+                                        ))}
+                                        {otherFees.map((fee, i) => (
+                                            <tr key={`other-${i}`} className="bg-yellow-50/50">
+                                                 <td className="px-6 py-4 font-medium text-gray-800">{fee.fees_name} (Extra)</td>
+                                                 <td className="px-6 py-4 text-right text-gray-600">₹{fee.amount}</td>
+                                                 <td className="px-6 py-4 text-right font-medium text-green-600">{fee.paid_date ? `₹${fee.amount}` : '-'}</td>
+                                                 <td className="px-6 py-4 text-right font-bold text-red-600">{!fee.paid_date ? `₹${fee.amount}` : '-'}</td>
+                                                 <td className="px-6 py-4 text-center">
+                                                    <span className={`px-3 py-1 rounded-full text-xs font-bold ${fee.paid_date ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                                        {fee.paid_date ? 'Paid' : 'Due'}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* 4. RESULTS TAB */}
+                {activeTab === 'results' && (
+                    <div className="animate-fade-in-up">
+                        {examResults.length === 0 ? (
+                            <div className="text-center py-20 bg-white rounded-xl shadow-sm border border-gray-200">
+                                <div className="text-6xl mb-4">📝</div>
+                                <h3 className="text-xl font-bold text-gray-800">No Results Declared</h3>
+                                <p className="text-gray-500 mt-2">Check back later for your exam updates.</p>
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                                {examResults.map((result, idx) => {
+                                    const subjects = result.subjects_marks?.subjects || [];
+                                    const totalObtained = subjects.reduce((sum:number, s:any) => sum + Number(s.obtained_marks), 0);
+                                    const totalMax = subjects.reduce((sum:number, s:any) => sum + Number(s.total_marks), 0);
+                                    const percentage = totalMax > 0 ? (totalObtained / totalMax) * 100 : 0;
+                                    const isPass = percentage >= 33;
+
+                                    return (
+                                        <div key={idx} className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden transform transition-all hover:-translate-y-1 hover:shadow-xl">
+                                            <div className={`p-4 flex justify-between items-center ${isPass ? 'bg-indigo-600' : 'bg-red-600'} text-white`}>
+                                                <h3 className="font-bold text-lg">{result.exam_name}</h3>
+                                                <span className="bg-white/20 px-3 py-1 rounded-lg text-sm font-mono backdrop-blur-sm">
+                                                    {percentage.toFixed(1)}%
+                                                </span>
+                                            </div>
+                                            
+                                            <div className="p-6">
+                                                <table className="w-full text-sm">
+                                                    <thead>
+                                                        <tr className="border-b border-gray-200 text-gray-500">
+                                                            <th className="text-left pb-2 font-semibold">Subject</th>
+                                                            <th className="text-right pb-2 font-semibold">Total</th>
+                                                            <th className="text-right pb-2 font-semibold">Obtained</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-gray-100">
+                                                        {subjects.map((sub: any, sIdx: number) => (
+                                                            <tr key={sIdx}>
+                                                                <td className="py-3 text-gray-800 font-medium">{sub.subject_name}</td>
+                                                                <td className="py-3 text-right text-gray-500">{sub.total_marks}</td>
+                                                                <td className="py-3 text-right font-bold text-gray-900">{sub.obtained_marks}</td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                    <tfoot>
+                                                        <tr className="bg-gray-50">
+                                                            <td className="py-3 pl-2 font-bold text-gray-800">GRAND TOTAL</td>
+                                                            <td className="py-3 text-right text-gray-500 font-semibold">{totalMax}</td>
+                                                            <td className="py-3 text-right font-bold text-indigo-600 pr-2">{totalObtained}</td>
+                                                        </tr>
+                                                    </tfoot>
+                                                </table>
+
+                                                <div className={`mt-4 text-center py-2 rounded-lg font-bold text-sm uppercase tracking-widest ${isPass ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                                                    Result: {isPass ? 'PASSED' : 'FAILED'}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* 5. ATTENDANCE TAB */}
+                {activeTab === 'attendance' && (
+                    <div className="animate-fade-in-up space-y-8">
+                        {/* Attendance Summary */}
+                        <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100 flex flex-col md:flex-row items-center justify-around gap-6">
+                            <div className="text-center">
+                                <div className="text-sm text-gray-500 font-semibold uppercase tracking-wider mb-2">Total Working Days</div>
+                                <div className="text-4xl font-black text-gray-800">{attendanceData.length}</div>
+                            </div>
+                            <div className="text-center">
+                                <div className="text-sm text-gray-500 font-semibold uppercase tracking-wider mb-2">Present</div>
+                                <div className="text-4xl font-black text-green-600">{attendanceData.filter(a => a.status === 'Present').length}</div>
+                            </div>
+                            <div className="text-center">
+                                <div className="text-sm text-gray-500 font-semibold uppercase tracking-wider mb-2">Absent</div>
+                                <div className="text-4xl font-black text-red-500">{attendanceData.filter(a => a.status === 'Absent').length}</div>
+                            </div>
+                             <div className="text-center">
+                                <div className="text-sm text-gray-500 font-semibold uppercase tracking-wider mb-2">Percentage</div>
+                                <div className="text-4xl font-black text-indigo-600">
+                                    {attendanceData.length > 0 
+                                        ? Math.round((attendanceData.filter(a => a.status === 'Present').length / attendanceData.length) * 100) 
+                                        : 0}%
                                 </div>
                             </div>
                         </div>
 
-                        {/* School Contact Card */}
-                        <div className="bg-white rounded-xl shadow-md p-6 border-l-4 border-blue-500">
-                            <h3 className="font-bold text-gray-800 mb-3 flex items-center gap-2">
-                                <UserCircleIcon /> School Info
-                            </h3>
-                            <p className="text-sm text-gray-600 mb-2">{school.address}</p>
-                            {school.mobile && (
-                                <a href={`tel:${school.mobile}`} className="mt-2 block text-center w-full bg-blue-50 text-blue-600 py-2 rounded-lg hover:bg-blue-100 transition-colors text-sm font-bold">
-                                    Call Office: {school.mobile}
-                                </a>
-                            )}
-                        </div>
-                    </div>
+                        {/* Visual Calendar */}
+                        <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100">
+                            <h3 className="font-bold text-gray-800 text-lg mb-6 border-b pb-2">Attendance Calendar</h3>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                {monthNames.map((month, mIdx) => {
+                                    const currentYear = new Date().getFullYear();
+                                    const daysInMonth = new Date(currentYear, mIdx + 1, 0).getDate();
+                                    const days = Array.from({length: daysInMonth}, (_, i) => i + 1);
+                                    
+                                    // Get records for this month
+                                    const monthRecords = attendanceData.filter(rec => {
+                                        const d = new Date(rec.date);
+                                        return d.getMonth() === mIdx && d.getFullYear() === currentYear;
+                                    });
 
-                    {/* Main Tabs Area */}
-                    <div className="md:col-span-2">
-                        <div className="bg-white rounded-xl shadow-md overflow-hidden min-h-[500px]">
-                            {/* Tabs Navigation */}
-                            <div className="flex border-b overflow-x-auto">
-                                {['profile', 'fees', 'attendance', 'results'].map((tab) => (
-                                    <button 
-                                        key={tab}
-                                        onClick={() => setActiveTab(tab as any)}
-                                        className={`flex-1 py-4 px-2 font-medium text-sm transition-colors capitalize whitespace-nowrap
-                                            ${activeTab === tab ? 'bg-green-50 text-green-700 border-b-2 border-green-600' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
-                                    >
-                                        {tab}
-                                    </button>
-                                ))}
-                            </div>
+                                    // Only show months that have passed or are current
+                                    if (mIdx > new Date().getMonth()) return null;
 
-                            {/* Tab Content */}
-                            <div className="p-6">
-                                
-                                {activeTab === 'profile' && (
-                                    <div className="space-y-6 animate-fade-in">
-                                        <div className="bg-indigo-50 p-5 rounded-xl border border-indigo-100">
-                                            <h3 className="font-bold text-indigo-900 mb-2 text-lg">Dashboard Overview</h3>
-                                            <p className="text-indigo-700 text-sm leading-relaxed">
-                                                Welcome back! You have attended <strong>{attendanceData.filter(a => a.status === 'Present').length} days</strong> this session and completed <strong>{examResults.length} exams</strong>.
-                                            </p>
-                                        </div>
-                                        
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div className="p-4 bg-gray-50 rounded-lg text-center border border-gray-200">
-                                                <div className="text-3xl font-bold text-green-600">{attendanceData.filter(a => a.status === 'Present').length}</div>
-                                                <div className="text-xs text-gray-500 uppercase tracking-wider mt-1 font-semibold">Days Present</div>
-                                            </div>
-                                            <div className="p-4 bg-gray-50 rounded-lg text-center border border-gray-200">
-                                                <div className="text-3xl font-bold text-blue-600">{examResults.length}</div>
-                                                <div className="text-xs text-gray-500 uppercase tracking-wider mt-1 font-semibold">Exams Taken</div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
+                                    return (
+                                        <div key={month} className="border border-gray-100 rounded-lg p-4">
+                                            <h4 className="font-bold text-center text-gray-700 mb-3">{month}</h4>
+                                            <div className="grid grid-cols-7 gap-1 text-center text-[10px]">
+                                                {days.map(day => {
+                                                    const dateStr = `${currentYear}-${String(mIdx+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+                                                    const record = monthRecords.find(r => r.date === dateStr);
+                                                    
+                                                    let bgClass = 'bg-gray-50 text-gray-300'; // Default / No Data
+                                                    if (record) {
+                                                        if(record.status === 'Present') bgClass = 'bg-green-500 text-white font-bold';
+                                                        else if(record.status === 'Absent') bgClass = 'bg-red-500 text-white font-bold';
+                                                        else if(record.status === 'Holiday') bgClass = 'bg-yellow-400 text-white';
+                                                    }
 
-                                {activeTab === 'fees' && (
-                                    <div className="space-y-4 animate-fade-in">
-                                        {profile.previous_dues && profile.previous_dues > 0 && (
-                                            <div className="bg-red-50 p-4 rounded-lg flex justify-between items-center border border-red-100">
-                                                <span className="font-bold text-red-700">Previous Dues Arrears</span>
-                                                <span className="font-bold text-red-700">₹{profile.previous_dues}</span>
-                                            </div>
-                                        )}
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                            {months.map(month => {
-                                                const status = parseFeeStatus(profile[month as keyof Student] as string);
-                                                return (
-                                                    <div key={month} className="flex justify-between items-center p-3 border border-gray-200 rounded-lg hover:shadow-sm transition-shadow bg-gray-50/50">
-                                                        <span className="capitalize font-medium text-gray-700">{month}</span>
-                                                        <span className={`px-2 py-1 rounded text-xs font-bold ${status.color}`}>{status.label}</span>
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-                                )}
-
-                                {activeTab === 'attendance' && (
-                                    <div className="animate-fade-in">
-                                        <h3 className="font-bold text-gray-800 mb-4">Attendance Log</h3>
-                                        <div className="space-y-2 max-h-96 overflow-y-auto pr-2">
-                                            {attendanceData.length === 0 ? (
-                                                <p className="text-gray-500 italic text-center py-8">No attendance records found for this year.</p>
-                                            ) : (
-                                                attendanceData.slice().reverse().map((rec, i) => (
-                                                    <div key={i} className="flex justify-between items-center p-3 bg-white border border-gray-100 rounded-lg shadow-sm">
-                                                        <span className="text-gray-700 font-medium">{new Date(rec.date).toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}</span>
-                                                        <span className={`px-3 py-1 rounded-full text-xs font-bold ${rec.status === 'Present' ? 'bg-green-100 text-green-800' : rec.status === 'Absent' ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                                                            {rec.status}
-                                                        </span>
-                                                    </div>
-                                                ))
-                                            )}
-                                        </div>
-                                    </div>
-                                )}
-
-                                {activeTab === 'results' && (
-                                    <div className="space-y-6 animate-fade-in">
-                                        {examResults.length === 0 ? (
-                                            <div className="text-center py-12">
-                                                <div className="text-gray-300 mb-3">
-                                                    <svg className="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                                                </div>
-                                                <p className="text-gray-500">No exam results declared yet.</p>
-                                            </div>
-                                        ) : (
-                                            examResults.map((result, idx) => {
-                                                const subjects = result.subjects_marks?.subjects || [];
-                                                const totalObtained = subjects.reduce((sum: number, s: any) => sum + Number(s.obtained_marks), 0);
-                                                const totalMax = subjects.reduce((sum: number, s: any) => sum + Number(s.total_marks), 0);
-                                                const percentage = totalMax > 0 ? (totalObtained / totalMax) * 100 : 0;
-                                                
-                                                return (
-                                                    <div key={idx} className="border border-gray-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
-                                                        <div className="bg-gray-50 p-4 flex justify-between items-center border-b border-gray-200">
-                                                            <h3 className="font-bold text-gray-800">{result.exam_name}</h3>
-                                                            <span className={`px-3 py-1 rounded-full text-sm font-bold ${percentage >= 33 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                                                                {percentage.toFixed(1)}%
-                                                            </span>
+                                                    return (
+                                                        <div key={day} className={`w-6 h-6 flex items-center justify-center rounded-full mx-auto ${bgClass}`}>
+                                                            {day}
                                                         </div>
-                                                        <div className="p-4">
-                                                            <table className="w-full text-sm">
-                                                                <thead>
-                                                                    <tr className="text-gray-500 border-b border-gray-100">
-                                                                        <th className="text-left pb-2 font-medium">Subject</th>
-                                                                        <th className="text-right pb-2 font-medium">Marks</th>
-                                                                    </tr>
-                                                                </thead>
-                                                                <tbody className="divide-y divide-gray-50">
-                                                                    {subjects.map((sub: any, sIdx: number) => (
-                                                                        <tr key={sIdx}>
-                                                                            <td className="py-2 text-gray-700">{sub.subject_name}</td>
-                                                                            <td className="py-2 text-right font-medium">
-                                                                                {sub.obtained_marks} <span className="text-gray-400 text-xs">/ {sub.total_marks}</span>
-                                                                            </td>
-                                                                        </tr>
-                                                                    ))}
-                                                                </tbody>
-                                                                <tfoot>
-                                                                    <tr className="bg-gray-50">
-                                                                        <td className="py-2 pl-2 font-bold text-gray-800">Total</td>
-                                                                        <td className="py-2 text-right pr-2 font-bold text-gray-800">{totalObtained} / {totalMax}</td>
-                                                                    </tr>
-                                                                </tfoot>
-                                                            </table>
-                                                        </div>
-                                                    </div>
-                                                );
-                                            })
-                                        )}
-                                    </div>
-                                )}
+                                                    )
+                                                })}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
                             </div>
                         </div>
                     </div>
-                </div>
-            </div>
+                )}
+
+            </main>
         </div>
     );
 };
+
+// --- Sub Components ---
+const InfoRow: React.FC<{ label: string; value?: string; icon: string }> = ({ label, value, icon }) => (
+    <div className="flex items-start gap-3">
+        <span className="text-xl">{icon}</span>
+        <div>
+            <p className="text-xs font-semibold text-gray-400 uppercase">{label}</p>
+            <p className="text-gray-800 font-medium">{value || 'N/A'}</p>
+        </div>
+    </div>
+);
 
 export default StudentDashboard;

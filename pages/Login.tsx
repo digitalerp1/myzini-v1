@@ -124,7 +124,7 @@ const Login: React.FC<LoginProps> = ({ onStudentLogin }) => {
         }
 
         try {
-            // Updated to use the new SECURE function which returns aggregated data
+            // Use secure function
             const { data, error } = await supabase.rpc('student_login_secure', {
                 phone_input: cleanMobile,
                 pass_input: cleanPass
@@ -133,9 +133,13 @@ const Login: React.FC<LoginProps> = ({ onStudentLogin }) => {
             if (error) throw error;
 
             if (data && Array.isArray(data) && data.length > 0) {
+                // Save Token to LocalStorage for Auto-Login
+                if (data[0].student_profile?.session_token) {
+                    localStorage.setItem('student_token', data[0].student_profile.session_token);
+                }
+
                 // Login successful
                 if (onStudentLogin) {
-                    // Pass the full array of students (to handle siblings)
                     onStudentLogin(data);
                 }
             } else {
@@ -143,7 +147,6 @@ const Login: React.FC<LoginProps> = ({ onStudentLogin }) => {
             }
         } catch (err: any) {
             console.error("Login Error:", err);
-            // Provide a more descriptive error if possible
             const errorMsg = err.message || 'Login failed. Please check your credentials or contact school administration.';
             setMessage({ type: 'error', text: errorMsg });
         } finally {

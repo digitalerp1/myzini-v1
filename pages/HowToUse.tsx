@@ -185,85 +185,176 @@ const HowToUse: React.FC = () => {
                             </div>
                             <div>
                                 <h2 className="text-2xl font-bold text-gray-800">Secure Student Login System</h2>
-                                <p className="text-gray-600">This Advanced SQL function ensures that students ONLY see their own data. It aggregates Profile, Fees, Exams, and Attendance into a single secure package.</p>
+                                <p className="text-gray-600">Advanced Features: Token Auto-Login, Class Teacher, Time Table & Fee Analysis.</p>
                             </div>
                         </div>
 
                         <div className="bg-gray-900 rounded-lg p-6 overflow-x-auto border border-gray-700 shadow-inner">
                             <div className="flex justify-between items-center mb-2">
-                                <span className="text-xs font-mono text-green-400">PostgreSQL Function (Secure Aggregation)</span>
+                                <span className="text-xs font-mono text-green-400">PostgreSQL Functions (Run All)</span>
                                 <span className="text-xs text-gray-500">Copy & Paste into Supabase SQL Editor</span>
                             </div>
                             <pre className="text-xs font-mono text-gray-300 whitespace-pre-wrap leading-relaxed">
-{`-- Function: student_login_secure
--- Description: Authenticates a student and returns aggregated, secure data.
---              Includes strict checks to ensure data isolation.
+{`-- 1. Setup Session Token Column
+ALTER TABLE public.students ADD COLUMN IF NOT EXISTS session_token text;
 
+-- 2. Function: student_login_secure (Credentials Login)
 CREATE OR REPLACE FUNCTION student_login_secure(phone_input text, pass_input text)
 RETURNS json AS $$
 DECLARE
     result_data json;
+    s_record record;
+    new_token text;
 BEGIN
-    SELECT json_agg(
-        json_build_object(
-            'student_profile', s,
-            
-            -- Fetch School Owner Details (Public Info only)
-            'school_info', (
-                SELECT json_build_object(
-                    'school_name', o.school_name,
-                    'address', o.address,
-                    'principal_name', o.principal_name,
-                    'school_image_url', o.school_image_url,
-                    'mobile', o.mobile_number,
-                    'website', o.website
-                )
-                FROM owner o WHERE o.uid = s.uid
-            ),
-            
-            -- Fetch Exam Results specific to this student's Class and Roll Number
-            'exam_results', (
-                SELECT COALESCE(json_agg(r), '[]'::json)
-                FROM exam_results r
-                WHERE r.uid = s.uid
-                AND r.class = s.class
-                AND r.roll_number = s.roll_number
-            ),
-            
-            -- Fetch Attendance: ONLY records where this student is marked Present or Absent.
-            -- This strictly prevents seeing other students' attendance data.
-            'attendance_records', (
-                SELECT COALESCE(json_agg(
-                    json_build_object(
-                        'date', a.date,
-                        'status', CASE
-                            -- Check if Roll Number is in the comma-separated list
-                            WHEN s.roll_number = ANY(string_to_array(a.present, ',')) THEN 'Present'
-                            WHEN s.roll_number = ANY(string_to_array(a.absent, ',')) THEN 'Absent'
-                            ELSE 'Holiday'
-                        END
-                    )
-                ), '[]'::json)
-                FROM attendance a
-                -- Join strictly on ID to avoid ambiguity
-                JOIN classes c ON a.class_id = c.id
-                WHERE c.uid = s.uid
-                AND c.class_name = s.class
-                -- Ensure we only pick up rows where the student actually exists in the string
-                AND (
-                    s.roll_number = ANY(string_to_array(a.present, ','))
-                    OR
-                    s.roll_number = ANY(string_to_array(a.absent, ','))
-                )
-                -- Limit to current year to optimize size. Cast types explicitly for safety.
-                AND a.date >= (EXTRACT(YEAR FROM CURRENT_DATE)::text || '-01-01')::date
-            )
-        )
-    ) INTO result_data
-    FROM students s
-    -- Ensure mobile number is treated as text and trimmed for comparison
-    WHERE TRIM(s.mobile::text) = TRIM(phone_input) AND s.password = pass_input;
+    -- Find student
+    SELECT * INTO s_record FROM students s 
+    WHERE TRIM(s.mobile::text) = TRIM(phone_input) AND s.password = pass_input
+    LIMIT 1;
 
+    IF FOUND THEN
+        -- Generate 18 digit random token
+        new_token := floor(random() * (999999999999999999 - 100000000000000000 + 1) + 100000000000000000)::text;
+        
+        -- Update student with new token
+        UPDATE students SET session_token = new_token WHERE id = s_record.id;
+        
+        -- Return Data
+        SELECT json_agg(
+            json_build_object(
+                'student_profile', (SELECT row_to_json(st) FROM (SELECT *, new_token as session_token FROM students WHERE id = s_record.id) st),
+                
+                'class_info', (
+                    SELECT json_build_object(
+                        'school_fees', c.school_fees,
+                        'class_teacher', (
+                            SELECT json_build_object('name', st.name, 'mobile', st.mobile) 
+                            FROM staff st WHERE st.staff_id = c.staff_id
+                        ),
+                        'time_table', (
+                            SELECT COALESCE(json_agg(json_build_object(
+                                'subject', sub.subject_name,
+                                'teacher', st_sub.name,
+                                'time', to_char(ac.incoming_time, 'HH12:MI AM') || ' - ' || to_char(ac.outgoing_time, 'HH12:MI AM')
+                            )), '[]'::json)
+                            FROM assign_class ac
+                            JOIN subjects sub ON ac.subject_id = sub.id
+                            LEFT JOIN staff st_sub ON ac.staff_id = st_sub.staff_id
+                            WHERE ac.class_id = c.id
+                        )
+                    )
+                    FROM classes c
+                    WHERE c.class_name = s_record.class AND c.uid = s_record.uid
+                    LIMIT 1
+                ),
+
+                'school_info', (
+                    SELECT json_build_object(
+                        'school_name', o.school_name,
+                        'address', o.address,
+                        'principal_name', o.principal_name,
+                        'school_image_url', o.school_image_url,
+                        'mobile', o.mobile_number,
+                        'website', o.website
+                    )
+                    FROM owner o WHERE o.uid = s_record.uid
+                ),
+                
+                'exam_results', (
+                    SELECT COALESCE(json_agg(r), '[]'::json)
+                    FROM exam_results r
+                    WHERE r.uid = s_record.uid AND r.class = s_record.class AND r.roll_number = s_record.roll_number
+                ),
+                
+                'attendance_records', (
+                    SELECT COALESCE(json_agg(
+                        json_build_object(
+                            'date', a.date,
+                            'status', CASE
+                                WHEN s_record.roll_number = ANY(string_to_array(a.present, ',')) THEN 'Present'
+                                WHEN s_record.roll_number = ANY(string_to_array(a.absent, ',')) THEN 'Absent'
+                                ELSE 'Holiday'
+                            END
+                        )
+                    ), '[]'::json)
+                    FROM attendance a
+                    JOIN classes c ON a.class_id = c.id
+                    WHERE c.uid = s_record.uid AND c.class_name = s_record.class
+                    AND (
+                        s_record.roll_number = ANY(string_to_array(a.present, ','))
+                        OR
+                        s_record.roll_number = ANY(string_to_array(a.absent, ','))
+                    )
+                    AND a.date >= (EXTRACT(YEAR FROM CURRENT_DATE)::text || '-01-01')::date
+                )
+            )
+        ) INTO result_data;
+    END IF;
+
+    RETURN result_data;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+-- 3. Function: student_login_by_token (Auto Login)
+CREATE OR REPLACE FUNCTION student_login_by_token(token_input text)
+RETURNS json AS $$
+DECLARE
+    result_data json;
+    s_record record;
+BEGIN
+    SELECT * INTO s_record FROM students s WHERE s.session_token = token_input LIMIT 1;
+
+    IF FOUND THEN
+         -- Reuse logic by calling main login with verified credentials (simulated)
+         -- But to avoid recursion issues or password checks, we reconstruct the JSON here directly
+         SELECT json_agg(
+            json_build_object(
+                'student_profile', s_record,
+                
+                'class_info', (
+                    SELECT json_build_object(
+                        'school_fees', c.school_fees,
+                        'class_teacher', (SELECT json_build_object('name', st.name, 'mobile', st.mobile) FROM staff st WHERE st.staff_id = c.staff_id),
+                        'time_table', (
+                            SELECT COALESCE(json_agg(json_build_object(
+                                'subject', sub.subject_name,
+                                'teacher', st_sub.name,
+                                'time', to_char(ac.incoming_time, 'HH12:MI AM') || ' - ' || to_char(ac.outgoing_time, 'HH12:MI AM')
+                            )), '[]'::json)
+                            FROM assign_class ac
+                            JOIN subjects sub ON ac.subject_id = sub.id
+                            LEFT JOIN staff st_sub ON ac.staff_id = st_sub.staff_id
+                            WHERE ac.class_id = c.id
+                        )
+                    )
+                    FROM classes c
+                    WHERE c.class_name = s_record.class AND c.uid = s_record.uid
+                    LIMIT 1
+                ),
+                'school_info', (
+                    SELECT json_build_object(
+                        'school_name', o.school_name,
+                        'address', o.address,
+                        'principal_name', o.principal_name,
+                        'school_image_url', o.school_image_url,
+                        'mobile', o.mobile_number,
+                        'website', o.website
+                    )
+                    FROM owner o WHERE o.uid = s_record.uid
+                ),
+                'exam_results', (
+                    SELECT COALESCE(json_agg(r), '[]'::json)
+                    FROM exam_results r
+                    WHERE r.uid = s_record.uid AND r.class = s_record.class AND r.roll_number = s_record.roll_number
+                ),
+                'attendance_records', (
+                    SELECT COALESCE(json_agg(json_build_object('date', a.date, 'status', CASE WHEN s_record.roll_number = ANY(string_to_array(a.present, ',')) THEN 'Present' ELSE 'Absent' END)), '[]'::json)
+                    FROM attendance a JOIN classes c ON a.class_id = c.id
+                    WHERE c.uid = s_record.uid AND c.class_name = s_record.class AND (s_record.roll_number = ANY(string_to_array(a.present, ',')) OR s_record.roll_number = ANY(string_to_array(a.absent, ',')))
+                    AND a.date >= (EXTRACT(YEAR FROM CURRENT_DATE)::text || '-01-01')::date
+                )
+            )
+        ) INTO result_data;
+    END IF;
     RETURN result_data;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;`}
@@ -271,7 +362,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;`}
                         </div>
                         
                         <div className="bg-blue-50 p-6 rounded-lg border border-blue-100 text-sm text-blue-800 mt-6">
-                            <h4 className="font-bold mb-3 text-lg">Setup Instructions (Crucial Step)</h4>
+                            <h4 className="font-bold mb-3 text-lg">Setup Instructions (Important Update)</h4>
                             <ol className="list-decimal list-inside space-y-2">
                                 <li>Open your <strong>Supabase Dashboard</strong> and navigate to your project.</li>
                                 <li>Click on the <strong>SQL Editor</strong> icon in the left sidebar.</li>
@@ -279,8 +370,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;`}
                                 <li><strong>Copy</strong> the entire code block above and paste it into the editor.</li>
                                 <li>Click the <strong>Run</strong> button (bottom right).</li>
                                 <li>
-                                    <span className="font-bold text-blue-700">Note:</span> This function sets the <code>search_path</code> to <code>public</code> to avoid permission errors during login.
-                                    If you updated the function, run this query again to replace the old version.
+                                    <span className="font-bold text-blue-700">Done:</span> This enables Token-based login, Class Teacher details, and Time Table display.
                                 </li>
                             </ol>
                         </div>
