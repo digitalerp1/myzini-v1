@@ -196,9 +196,8 @@ const HowToUse: React.FC = () => {
                             </div>
                             <pre className="text-xs font-mono text-gray-300 whitespace-pre-wrap leading-relaxed">
 {`-- Function: student_login_secure
--- Description: Authenticates a student and returns aggregated, secure data including
---              Profile, School Info, Exam Results, and Personal Attendance Records.
---              Handles multiple students (siblings) with the same mobile/password.
+-- Description: Authenticates a student and returns aggregated, secure data.
+--              Includes strict checks to ensure data isolation.
 
 CREATE OR REPLACE FUNCTION student_login_secure(phone_input text, pass_input text)
 RETURNS json AS $$
@@ -246,31 +245,33 @@ BEGIN
                     )
                 ), '[]'::json)
                 FROM attendance a
+                -- Join strictly on ID to avoid ambiguity
                 JOIN classes c ON a.class_id = c.id
                 WHERE c.uid = s.uid
                 AND c.class_name = s.class
+                -- Ensure we only pick up rows where the student actually exists in the string
                 AND (
-                    -- Security Check: Only return row if student is mentioned
                     s.roll_number = ANY(string_to_array(a.present, ','))
                     OR
                     s.roll_number = ANY(string_to_array(a.absent, ','))
                 )
-                -- Optional: Limit to current year to optimize size
-                AND a.date >= (EXTRACT(YEAR FROM CURRENT_DATE) || '-01-01')
+                -- Limit to current year to optimize size. Cast types explicitly for safety.
+                AND a.date >= (EXTRACT(YEAR FROM CURRENT_DATE)::text || '-01-01')::date
             )
         )
     ) INTO result_data
     FROM students s
-    WHERE s.mobile = phone_input AND s.password = pass_input;
+    -- Ensure mobile number is treated as text and trimmed for comparison
+    WHERE TRIM(s.mobile::text) = TRIM(phone_input) AND s.password = pass_input;
 
     RETURN result_data;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;`}
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;`}
                             </pre>
                         </div>
                         
                         <div className="bg-blue-50 p-6 rounded-lg border border-blue-100 text-sm text-blue-800 mt-6">
-                            <h4 className="font-bold mb-3 text-lg">Setup Instructions</h4>
+                            <h4 className="font-bold mb-3 text-lg">Setup Instructions (Crucial Step)</h4>
                             <ol className="list-decimal list-inside space-y-2">
                                 <li>Open your <strong>Supabase Dashboard</strong> and navigate to your project.</li>
                                 <li>Click on the <strong>SQL Editor</strong> icon in the left sidebar.</li>
@@ -278,8 +279,8 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;`}
                                 <li><strong>Copy</strong> the entire code block above and paste it into the editor.</li>
                                 <li>Click the <strong>Run</strong> button (bottom right).</li>
                                 <li>
-                                    <span className="font-bold text-blue-700">Verification:</span> If successful, the text "Success" or "No rows returned" will appear.
-                                    The login page will now automatically detect this function and serve secure data.
+                                    <span className="font-bold text-blue-700">Note:</span> This function sets the <code>search_path</code> to <code>public</code> to avoid permission errors during login.
+                                    If you updated the function, run this query again to replace the old version.
                                 </li>
                             </ol>
                         </div>

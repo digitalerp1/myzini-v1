@@ -114,11 +114,20 @@ const Login: React.FC<LoginProps> = ({ onStudentLogin }) => {
         setLoading(true);
         setMessage(null);
 
+        const cleanMobile = mobile.trim();
+        const cleanPass = studentPass.trim();
+
+        if (!cleanMobile || !cleanPass) {
+             setMessage({ type: 'error', text: 'Please enter both mobile number and password.' });
+             setLoading(false);
+             return;
+        }
+
         try {
             // Updated to use the new SECURE function which returns aggregated data
             const { data, error } = await supabase.rpc('student_login_secure', {
-                phone_input: mobile,
-                pass_input: studentPass
+                phone_input: cleanMobile,
+                pass_input: cleanPass
             });
 
             if (error) throw error;
@@ -130,11 +139,13 @@ const Login: React.FC<LoginProps> = ({ onStudentLogin }) => {
                     onStudentLogin(data);
                 }
             } else {
-                setMessage({ type: 'error', text: 'Invalid mobile number or password.' });
+                setMessage({ type: 'error', text: 'Invalid mobile number or password. Check your details and try again.' });
             }
         } catch (err: any) {
             console.error("Login Error:", err);
-            setMessage({ type: 'error', text: 'Login failed. Please check your credentials or contact school administration.' });
+            // Provide a more descriptive error if possible
+            const errorMsg = err.message || 'Login failed. Please check your credentials or contact school administration.';
+            setMessage({ type: 'error', text: errorMsg });
         } finally {
             setLoading(false);
         }
