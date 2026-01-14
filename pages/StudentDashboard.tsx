@@ -36,8 +36,7 @@ const monthKeys = ['january', 'february', 'march', 'april', 'may', 'june', 'july
 
 const parsePaidAmount = (status: string | undefined | null): number => {
     if (!status || status === 'undefined' || status === 'Dues') return 0;
-    const isoDateRegex = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
-    if (isoDateRegex.test(status)) return Infinity; 
+    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(status)) return Infinity; 
     return status.split(';').reduce((total, p) => {
         const parts = p.split('=d=');
         return total + (parts.length === 2 ? parseFloat(parts[0]) || 0 : 0);
@@ -58,7 +57,6 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ student: studentsDa
     const feeLedger = useMemo(() => {
         let currentYearDues = (profile.previous_dues || 0);
         let currentYearPaid = 0;
-        const currentMonthIdx = new Date().getMonth();
 
         const ledger = monthKeys.map((key, idx) => {
             const status = profile[key as keyof Student] as string;
@@ -67,7 +65,6 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ student: studentsDa
             
             currentYearPaid += actualPaid;
             
-            const isPast = idx <= currentMonthIdx;
             let statusText = 'Upcoming';
             let color = 'bg-gray-100 text-gray-400';
             
@@ -75,13 +72,17 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ student: studentsDa
                 statusText = 'Paid';
                 color = 'bg-emerald-100 text-emerald-700';
             } else if (actualPaid > 0) {
-                statusText = `Bal: ₹${monthlyFee - actualPaid}`;
+                const bal = monthlyFee - actualPaid;
+                statusText = `Bal: ₹${bal}`;
                 color = 'bg-amber-100 text-amber-700';
-                if (isPast) currentYearDues += (monthlyFee - actualPaid);
-            } else if (isPast || status === 'Dues') {
+                currentYearDues += bal;
+            } else if (status === 'Dues') {
                 statusText = 'Due';
                 color = 'bg-rose-100 text-rose-700';
-                if (isPast) currentYearDues += monthlyFee;
+                currentYearDues += monthlyFee;
+            } else if (!status || status === 'undefined') {
+                statusText = 'No Info'; // Not billed
+                color = 'bg-gray-100 text-gray-400';
             }
 
             return { month: monthNames[idx], statusText, color, paid: actualPaid };
@@ -133,7 +134,6 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ student: studentsDa
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
                                     <div className="space-y-6">
                                         <h3 className="text-xs font-black text-indigo-400 uppercase tracking-widest border-b border-gray-100 pb-3 flex items-center gap-2">
-                                            {/* FIX: Added className support previously to AcademicCapIcon, ensuring it works here */}
                                             <AcademicCapIcon className="w-4 h-4" /> Academic Info
                                         </h3>
                                         <DataRow label="Admission Date" value={new Date(profile.registration_date).toLocaleDateString()} />
@@ -143,8 +143,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ student: studentsDa
                                     </div>
                                     <div className="space-y-6">
                                         <h3 className="text-xs font-black text-indigo-400 uppercase tracking-widest border-b border-gray-100 pb-3 flex items-center gap-2">
-                                            {/* FIX: Removed className from UserCircleIcon as its current definition doesn't support it or caused type mismatch */}
-                                            <UserCircleIcon /> Parents Info
+                                            <UserCircleIcon className="w-4 h-4" /> Parents Info
                                         </h3>
                                         <DataRow label="Father's Name" value={profile.father_name} />
                                         <DataRow label="Mother's Name" value={profile.mother_name} />
@@ -209,7 +208,6 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ student: studentsDa
                 {activeTab === 'routine' && (
                     <div className="animate-fade-in bg-white rounded-[2rem] shadow-xl overflow-hidden border border-gray-100">
                         <div className="p-10 bg-gray-50 border-b border-gray-100 flex justify-between items-center">
-                            {/* FIX: Added className support previously to CalendarIcon, ensuring it works here */}
                             <h3 className="font-black text-2xl text-gray-800 flex items-center gap-3"><CalendarIcon className="w-8 h-8 text-indigo-600" /> Academic Routine</h3>
                         </div>
                         {timeTable.length > 0 ? (

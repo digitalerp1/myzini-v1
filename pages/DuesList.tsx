@@ -15,8 +15,7 @@ const parsePaidAmount = (status: string | undefined | null): number => {
     if (!status || status === 'undefined' || status === 'Dues') {
         return 0;
     }
-    const isoDateRegex = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
-    if (isoDateRegex.test(status)) {
+    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(status)) {
         return Infinity; // Represents a legacy full payment
     }
     const payments = status.split(';');
@@ -91,15 +90,18 @@ const DuesList: React.FC = () => {
                 // Monthly
                 months.forEach(month => {
                     const status = student[month];
-                    // Consider it due if it's explicitly 'Dues', or part paid, or 'undefined' (meaning not updated yet but technically due if implied)
-                    // To be safe and cleaner, we usually calculate dues based on explicit 'Dues' status or partial payment.
-                    // If status is undefined/null, we assume it hasn't been processed yet, so maybe exclude? 
-                    // For "All Dues", let's include explicit Dues and Partial.
-                    if (status && status !== 'undefined') {
-                        const paidAmountRaw = parsePaidAmount(String(status));
-                        const paidAmount = paidAmountRaw === Infinity ? classFee : paidAmountRaw;
-                        if (paidAmount < classFee) {
-                            calculatedDue += (classFee - paidAmount);
+                    
+                    if (!status || status === 'undefined') return; // Strictly ignore undefined
+
+                    if (status === 'Dues') {
+                        calculatedDue += classFee;
+                    } else {
+                        // Check for partial
+                        const paidAmount = parsePaidAmount(String(status));
+                        const actualPaid = paidAmount === Infinity ? classFee : paidAmount;
+                        
+                        if (actualPaid < classFee) {
+                            calculatedDue += (classFee - actualPaid);
                         }
                     }
                 });
@@ -117,13 +119,16 @@ const DuesList: React.FC = () => {
                 const status = student[month];
                 
                 if (status && status !== 'undefined') {
-                    const paidAmountRaw = parsePaidAmount(String(status));
-                    const paidAmount = paidAmountRaw === Infinity ? classFee : paidAmountRaw;
-                    if (paidAmount < classFee) {
-                        calculatedDue = classFee - paidAmount;
+                    if (status === 'Dues') {
+                        calculatedDue = classFee;
+                    } else {
+                        // Check partial
+                        const paidAmount = parsePaidAmount(String(status));
+                        const actualPaid = paidAmount === Infinity ? classFee : paidAmount;
+                        if (actualPaid < classFee) {
+                            calculatedDue = classFee - actualPaid;
+                        }
                     }
-                } else if (status === 'Dues') {
-                     calculatedDue = classFee;
                 }
 
             } else if (filter.startsWith('other:')) {
@@ -143,6 +148,8 @@ const DuesList: React.FC = () => {
             }
         });
 
+        // Sort by amount descending
+        studentsWithCalculatedDues.sort((a,b) => b.dueAmount - a.dueAmount);
         setFilteredStudents(studentsWithCalculatedDues);
 
     }, [filter, allStudents, classes]);

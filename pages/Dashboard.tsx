@@ -43,14 +43,19 @@ interface DashboardData {
 }
 
 const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const monthKeys: (keyof Student)[] = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+const fullMonthKeys: (keyof Student)[] = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
 
 const parsePaidAmount = (status: string | undefined | null): number => {
     if (!status || status === 'undefined' || status === 'Dues') return 0;
+    // Legacy ISO date string check (means fully paid in old system)
     if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(status)) return Infinity;
+    
+    // Check for new format: "AMOUNT=d=DATE"
     return status.split(';').reduce((total, p) => {
         const parts = p.split('=d=');
-        return total + (parts.length === 2 ? parseFloat(parts[0]) || 0 : 0);
+        // If part[0] is a number, add it
+        const val = parseFloat(parts[0]);
+        return total + (isNaN(val) ? 0 : val);
     }, 0);
 };
 
@@ -64,7 +69,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
         try {
             const currentYear = new Date().getFullYear();
             const today = new Date().toISOString().split('T')[0];
-            const currentMonthIdx = new Date().getMonth();
 
             const [studentsRes, staffRes, classesRes, subjectsRes, expensesRes, salaryRes, attRes] = await Promise.all([
                 supabase.from('students').select('*'),
@@ -89,7 +93,11 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
             const classFeesMap = new Map(classes.map(c => [c.class_name, c.school_fees || 0]));
             let totalRevenue = 0;
             let totalDues = 0;
-            let paidStudentsCount = 0;
+            
+            // Counters for Pie Chart
+            let feeFullyPaidCount = 0; // Students with 0 dues
+            let feePartialCount = 0; // Students with some dues but also some payment
+            let feeDuesCount = 0; // Students with dues and NO payment/interaction
             
             const monthlyRevenue = new Array(12).fill(0);
             const monthlyAdmissions = new Array(12).fill(0);
@@ -98,8 +106,11 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
 
             students.forEach(s => {
                 const className = s.class || '';
-                const fee = classFeesMap.get(className) || 0;
-                let studentHasDues = false;
+                const monthlyFee = classFeesMap.get(className) || 0;
+                
+                // Track individual student balance to determine status category
+                let currentStudentDue = 0;
+                let currentStudentPaid = 0;
 
                 // Admissions Trend
                 if (s.registration_date) {
@@ -111,34 +122,80 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                 const c = s.caste || 'General';
                 casteMap.set(c, (casteMap.get(c) || 0) + 1);
 
-                // Lifecycle Fees
-                totalDues += (s.previous_dues || 0);
-                if ((s.previous_dues || 0) > 0) studentHasDues = true;
+                // 1. Previous Dues (Always added to Total Dues)
+                const prevDues = s.previous_dues || 0;
+                totalDues += prevDues;
+                currentStudentDue += prevDues;
 
-                monthKeys.forEach((key, idx) => {
+                // 2. Monthly Fees Logic
+                fullMonthKeys.forEach((key) => {
                     const status = s[key] as string;
-                    const paid = parsePaidAmount(status);
-                    const actualPaid = paid === Infinity ? fee : paid;
-                    
-                    totalRevenue += actualPaid;
-                    const d = status && /^\d{4}/.test(status) ? new Date(status.split(';')[0].split('=d=')[1] || status) : null;
-                    if (d && d.getFullYear() === currentYear) monthlyRevenue[d.getMonth()] += actualPaid;
 
-                    if (idx <= currentMonthIdx) {
-                        const due = fee - actualPaid;
-                        if (due > 0) {
-                            totalDues += due;
-                            studentHasDues = true;
+                    // STRICT CHECK: If undefined, null, or empty -> Skip (Not billed)
+                    if (!status || status === 'undefined') {
+                        return;
+                    }
+
+                    if (status === 'Dues') {
+                        // Explicitly marked as Due
+                        totalDues += monthlyFee;
+                        currentStudentDue += monthlyFee;
+                    } else {
+                        // Attempt to parse payment
+                        const paidAmount = parsePaidAmount(status);
+                        
+                        if (paidAmount === Infinity) {
+                            // Legacy full payment
+                            const actualPaid = monthlyFee;
+                            totalRevenue += actualPaid;
+                            currentStudentPaid += actualPaid;
+                            // Add to monthly revenue trend (approximate month based on key index)
+                            // Ideally we parse date from string, but legacy ISO is just date.
+                            // For simplicity in trend, we can use current month logic or parsing
+                            const d = new Date(status); 
+                             if (!isNaN(d.getTime()) && d.getFullYear() === currentYear) {
+                                monthlyRevenue[d.getMonth()] += actualPaid;
+                            }
+                        } else {
+                            // Standard Payment Format (Amount=d=Date)
+                            // Add to revenue
+                            totalRevenue += paidAmount;
+                            currentStudentPaid += paidAmount;
+
+                            // Extract date for trend
+                            if (status.includes('=d=')) {
+                                const datePart = status.split('=d=')[1]?.split(';')[0];
+                                if (datePart) {
+                                    const d = new Date(datePart);
+                                    if (!isNaN(d.getTime()) && d.getFullYear() === currentYear) {
+                                        monthlyRevenue[d.getMonth()] += paidAmount;
+                                    }
+                                }
+                            }
+
+                            // Calculate Partial Dues
+                            if (paidAmount < monthlyFee) {
+                                const balance = monthlyFee - paidAmount;
+                                totalDues += balance;
+                                currentStudentDue += balance;
+                            }
                         }
                     }
                 });
-
-                if (!studentHasDues) paidStudentsCount++;
+                
+                // Categorize Student
+                if (currentStudentDue > 0) {
+                    // Has dues
+                    if (currentStudentPaid > 0) feePartialCount++;
+                    else feeDuesCount++;
+                } else {
+                    // No dues (fully paid or not billed yet)
+                    feeFullyPaidCount++;
+                }
             });
 
             // Attendance Today
             let presentCount = 0;
-            let totalPossible = students.length;
             attendance.forEach(rec => {
                 presentCount += rec.present ? rec.present.split(',').length : 0;
             });
@@ -181,8 +238,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                     label, value, color: ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#ec4899'][i % 5]
                 })),
                 feeStatusData: [
-                    { label: 'Fully Paid', value: paidStudentsCount, color: '#10b981' },
-                    { label: 'Pending', value: students.length - paidStudentsCount, color: '#f59e0b' }
+                    { label: 'Fully Paid', value: feeFullyPaidCount, color: '#10b981' },
+                    { label: 'Partial Dues', value: feePartialCount, color: '#f59e0b' },
+                    { label: 'Full Dues', value: feeDuesCount, color: '#ef4444' }
                 ],
                 revenueTrend: monthlyRevenue.map((val, i) => ({ label: monthNames[i], value: val })),
                 admissionTrend: monthlyAdmissions.map((val, i) => ({ label: monthNames[i], value: val })),
@@ -229,7 +287,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                 <StatCard title="Total Revenue" value={format(data.totalRevenue)} icon={<RupeeIcon className="text-white w-6 h-6"/>} color="bg-emerald-600" />
                 <StatCard title="Net Liabilities" value={format(data.totalExpenses)} icon={<ExpensesIcon className="text-white w-6 h-6"/>} color="bg-rose-600" />
-                <StatCard title="Outstanding Dues" value={format(data.totalDues)} icon={<DuesIcon className="text-white w-6 h-6"/>} color="bg-amber-500" />
+                <StatCard title="Total Dues Amount" value={format(data.totalDues)} icon={<DuesIcon className="text-white w-6 h-6"/>} color="bg-amber-500" />
                 <StatCard title="Salaries Disbursed" value={format(data.totalSalariesPaid)} icon={<RupeeIcon className="text-white w-6 h-6"/>} color="bg-indigo-400" />
             </div>
 

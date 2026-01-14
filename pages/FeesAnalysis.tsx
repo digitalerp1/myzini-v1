@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase } from '../services/supabase';
@@ -18,8 +19,7 @@ const monthKeys: (keyof Student)[] = ['january', 'february', 'march', 'april', '
 
 const parsePaidAmount = (status: string | undefined | null): number => {
     if (!status || status === 'undefined' || status === 'Dues') return 0;
-    const isoDateRegex = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
-    if (isoDateRegex.test(status)) return Infinity; 
+    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(status)) return Infinity; 
     return status.split(';').reduce((total, p) => {
         const parts = p.split('=d=');
         return total + (parts.length === 2 ? parseFloat(parts[0]) || 0 : 0);
@@ -48,7 +48,6 @@ const FeesAnalysis: React.FC<FeesAnalysisProps> = ({ user }) => {
 
     const stats = useMemo(() => {
         const todayStr = new Date().toISOString().split('T')[0];
-        const currentMonthIdx = new Date().getMonth();
         const classFeesMap = new Map(classes.map(c => [c.class_name, c.school_fees || 0]));
 
         let totalCollection = 0;
@@ -62,32 +61,48 @@ const FeesAnalysis: React.FC<FeesAnalysisProps> = ({ user }) => {
             const className = s.class || 'Unassigned';
             const monthlyFee = classFeesMap.get(className) || 0;
             
-            // FIX: Applied explicit numeric casting to handle previous_dues calculation safely
-            totalDues += (s.previous_dues || 0) as number;
-            classDuesVolume[className] = (Number(classDuesVolume[className]) || 0) + ((s.previous_dues || 0) as number);
+            // 1. Previous Dues (Always count as due)
+            const prevDues = (s.previous_dues || 0) as number;
+            totalDues += prevDues;
+            classDuesVolume[className] = (Number(classDuesVolume[className]) || 0) + prevDues;
 
-            monthKeys.forEach((key, idx) => {
+            // 2. Monthly Logic
+            monthKeys.forEach((key) => {
                 const status = s[key] as string;
-                const paid = parsePaidAmount(status);
-                const actualPaid = paid === Infinity ? monthlyFee : paid;
                 
-                totalCollection += actualPaid;
-                
-                if (status?.includes(todayStr)) {
-                    const todayPayments = status.split(';').filter(p => p.includes(todayStr));
-                    todayPayments.forEach(tp => {
-                        const amt = parseFloat(tp.split('=d=')[0]) || 0;
-                        todayCollection += amt;
-                        classPaidToday[className] = (Number(classPaidToday[className]) || 0) + amt;
-                    });
-                }
+                // Ignore undefined/not billed
+                if (!status || status === 'undefined') return;
 
-                if (idx <= currentMonthIdx) {
-                    const due = monthlyFee - actualPaid;
-                    if (due > 0) {
-                        // FIX: Ensure both operands are treated as numbers for arithmetic operation
-                        totalDues += (due as number);
-                        classDuesVolume[className] = (Number(classDuesVolume[className]) || 0) + (due as number);
+                if (status === 'Dues') {
+                    // Full Due
+                    totalDues += monthlyFee;
+                    classDuesVolume[className] = (Number(classDuesVolume[className]) || 0) + monthlyFee;
+                } else {
+                    const paid = parsePaidAmount(status);
+                    
+                    if (paid === Infinity) {
+                        // Legacy Full Paid
+                        totalCollection += monthlyFee;
+                    } else {
+                        // Standard Amount
+                        totalCollection += paid;
+                        
+                        // Check for today's collection
+                        if (status.includes(todayStr)) {
+                            const todayPayments = status.split(';').filter(p => p.includes(todayStr));
+                            todayPayments.forEach(tp => {
+                                const amt = parseFloat(tp.split('=d=')[0]) || 0;
+                                todayCollection += amt;
+                                classPaidToday[className] = (Number(classPaidToday[className]) || 0) + amt;
+                            });
+                        }
+                        
+                        // Partial Dues Calculation
+                        if (paid < monthlyFee) {
+                            const balance = monthlyFee - paid;
+                            totalDues += balance;
+                            classDuesVolume[className] = (Number(classDuesVolume[className]) || 0) + balance;
+                        }
                     }
                 }
             });
@@ -105,18 +120,27 @@ const FeesAnalysis: React.FC<FeesAnalysisProps> = ({ user }) => {
     const drillDownStudents = useMemo(() => {
         if (!selectedDrillClass) return [];
         const classFee = classes.find(c => c.class_name === selectedDrillClass)?.school_fees || 0;
-        const currentMonthIdx = new Date().getMonth();
 
         return allStudents.filter(s => s.class === selectedDrillClass).map(s => {
             let studentDue = (s.previous_dues || 0);
-            monthKeys.forEach((key, idx) => {
-                if (idx <= currentMonthIdx) {
-                    const paid = parsePaidAmount(s[key] as string);
-                    studentDue += (classFee - (paid === Infinity ? classFee : paid));
+            
+            monthKeys.forEach((key) => {
+                const status = s[key] as string;
+                
+                if (!status || status === 'undefined') return;
+
+                if (status === 'Dues') {
+                    studentDue += classFee;
+                } else {
+                    const paid = parsePaidAmount(status);
+                    const actualPaid = paid === Infinity ? classFee : paid;
+                    if (actualPaid < classFee) {
+                        studentDue += (classFee - actualPaid);
+                    }
                 }
             });
             return { ...s, calculatedDue: studentDue };
-        }).sort((a, b) => b.calculatedDue - a.calculatedDue);
+        }).filter(s => s.calculatedDue > 0).sort((a, b) => b.calculatedDue - a.calculatedDue);
     }, [selectedDrillClass, allStudents, classes]);
 
     if (loading) return <div className="flex justify-center items-center h-screen"><Spinner size="12" /></div>;
@@ -129,7 +153,7 @@ const FeesAnalysis: React.FC<FeesAnalysisProps> = ({ user }) => {
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <StatCard title="Total Collection" value={`₹${stats.totalCollection.toLocaleString()}`} icon={<RupeeIcon />} color="bg-emerald-500" />
-                <StatCard title="Total Outstanding" value={`₹${stats.totalDues.toLocaleString()}`} icon={<DuesIcon />} color="bg-rose-500" />
+                <StatCard title="Total Dues Amount" value={`₹${stats.totalDues.toLocaleString()}`} icon={<DuesIcon />} color="bg-rose-500" />
                 <StatCard title="Today's Collection" value={`₹${stats.todayCollection.toLocaleString()}`} icon={<RupeeIcon />} color="bg-indigo-600" />
             </div>
 
@@ -162,12 +186,12 @@ const FeesAnalysis: React.FC<FeesAnalysisProps> = ({ user }) => {
                                 <tr>
                                     <th className="px-6 py-4 text-left text-xs font-black text-gray-400 uppercase tracking-widest">Student / Parents</th>
                                     <th className="px-6 py-4 text-center text-xs font-black text-gray-400 uppercase tracking-widest">Mobile</th>
-                                    <th className="px-6 py-4 text-right text-xs font-black text-rose-600 uppercase tracking-widest bg-rose-50/50">Cumulative Due</th>
+                                    <th className="px-6 py-4 text-right text-xs font-black text-rose-600 uppercase tracking-widest bg-rose-50/50">Total Pending Dues</th>
                                     <th className="px-6 py-4 text-center text-xs font-black text-gray-400 uppercase tracking-widest">Action</th>
                                 </tr>
                             </thead>
                             <tbody className="bg-white divide-y divide-gray-200">
-                                {drillDownStudents.map(s => (
+                                {drillDownStudents.length > 0 ? drillDownStudents.map(s => (
                                     <tr key={s.id} className="hover:bg-indigo-50 transition-colors">
                                         <td className="px-6 py-4">
                                             <div className="flex items-center gap-4">
@@ -186,12 +210,17 @@ const FeesAnalysis: React.FC<FeesAnalysisProps> = ({ user }) => {
                                         </td>
                                         <td className="px-6 py-4 text-center">
                                             <button onClick={() => setSelectedStudentForProfile(s)} className="p-3 bg-white border border-gray-200 text-indigo-600 rounded-xl hover:bg-indigo-600 hover:text-white transition-all shadow-sm">
-                                                {/* FIX: Removed className from ViewIcon as its current definition doesn't support it or caused type mismatch */}
-                                                <ViewIcon />
+                                                <ViewIcon className="w-5 h-5" />
                                             </button>
                                         </td>
                                     </tr>
-                                ))}
+                                )) : (
+                                    <tr>
+                                        <td colSpan={4} className="text-center py-10 text-gray-500 font-bold bg-green-50">
+                                            No pending dues for this class!
+                                        </td>
+                                    </tr>
+                                )}
                             </tbody>
                         </table>
                     </div>
