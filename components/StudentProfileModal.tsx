@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../services/supabase';
 import { Student, Class, OtherFee, StudentHostelData, HostelFeeRecord } from '../types';
@@ -335,10 +334,12 @@ const StudentProfileModal: React.FC<StudentProfileModalProps> = ({ student: init
     const finalTotalPaid = totalPaid + otherFeesSummary.paid;
     const finalTotalDues = totalDues + otherFeesSummary.dues + (student.previous_dues || 0);
 
-    const attendanceSummary = Array.from(attendanceStatus.values()).reduce((acc: { present: number; absent: number }, status: 'present' | 'absent') => {
-        if (status === 'present') acc.present++;
-        if (status === 'absent') acc.absent++;
-        return acc;
+    // FIX: Explicitly cast accumulator to the correct type to resolve errors when accessing .present and .absent
+    const attendanceSummary = Array.from(attendanceStatus.values()).reduce((acc, status: 'present' | 'absent') => {
+        const result = acc as { present: number; absent: number };
+        if (status === 'present') result.present++;
+        if (status === 'absent') result.absent++;
+        return result;
     }, { present: 0, absent: 0 });
 
     // Hostel Calculations

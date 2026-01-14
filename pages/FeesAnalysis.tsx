@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase } from '../services/supabase';
@@ -63,8 +62,9 @@ const FeesAnalysis: React.FC<FeesAnalysisProps> = ({ user }) => {
             const className = s.class || 'Unassigned';
             const monthlyFee = classFeesMap.get(className) || 0;
             
-            totalDues += (s.previous_dues || 0);
-            classDuesVolume[className] = (Number(classDuesVolume[className]) || 0) + (s.previous_dues || 0);
+            // FIX: Applied explicit numeric casting to handle previous_dues calculation safely
+            totalDues += (s.previous_dues || 0) as number;
+            classDuesVolume[className] = (Number(classDuesVolume[className]) || 0) + ((s.previous_dues || 0) as number);
 
             monthKeys.forEach((key, idx) => {
                 const status = s[key] as string;
@@ -85,8 +85,9 @@ const FeesAnalysis: React.FC<FeesAnalysisProps> = ({ user }) => {
                 if (idx <= currentMonthIdx) {
                     const due = monthlyFee - actualPaid;
                     if (due > 0) {
-                        totalDues += due;
-                        classDuesVolume[className] = (Number(classDuesVolume[className]) || 0) + due;
+                        // FIX: Ensure both operands are treated as numbers for arithmetic operation
+                        totalDues += (due as number);
+                        classDuesVolume[className] = (Number(classDuesVolume[className]) || 0) + (due as number);
                     }
                 }
             });
