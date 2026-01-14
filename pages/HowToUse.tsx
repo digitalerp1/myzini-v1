@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 
 const HowToUse: React.FC = () => {
-    const [activeTab, setActiveTab] = useState<'start' | 'forms' | 'features' | 'faq' | 'dev'>('start');
+    const [activeTab, setActiveTab] = useState<'start' | 'forms' | 'features' | 'faq'>('start');
 
     return (
         <div className="animate-fade-in pb-12">
@@ -71,9 +71,6 @@ const HowToUse: React.FC = () => {
                 </button>
                 <button onClick={() => setActiveTab('features')} className={`tab-btn ${activeTab === 'features' ? 'active' : 'inactive'}`}>
                     ✨ Advanced Features
-                </button>
-                <button onClick={() => setActiveTab('dev')} className={`tab-btn ${activeTab === 'dev' ? 'active' : 'inactive'}`}>
-                    👨‍🎓 Student App Setup
                 </button>
                 <button onClick={() => setActiveTab('faq')} className={`tab-btn ${activeTab === 'faq' ? 'active' : 'inactive'}`}>
                     ❓ FAQ & Support
@@ -176,216 +173,14 @@ const HowToUse: React.FC = () => {
                     </div>
                 )}
 
-                {/* Tab 4: Student App Setup (DB Functions) */}
-                {activeTab === 'dev' && (
-                    <div className="animate-fade-in-up bg-white rounded-2xl shadow p-8 space-y-6">
-                        <div className="flex items-center gap-4 mb-4">
-                            <div className="bg-green-100 p-3 rounded-full text-green-600">
-                                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>
-                            </div>
-                            <div>
-                                <h2 className="text-2xl font-bold text-gray-800">Secure Student Login System</h2>
-                                <p className="text-gray-600">Advanced Features: Token Auto-Login, Class Teacher, Time Table & Fee Analysis.</p>
-                            </div>
-                        </div>
-
-                        <div className="bg-gray-900 rounded-lg p-6 overflow-x-auto border border-gray-700 shadow-inner">
-                            <div className="flex justify-between items-center mb-2">
-                                <span className="text-xs font-mono text-green-400">PostgreSQL Functions (Run All)</span>
-                                <span className="text-xs text-gray-500">Copy & Paste into Supabase SQL Editor</span>
-                            </div>
-                            <pre className="text-xs font-mono text-gray-300 whitespace-pre-wrap leading-relaxed">
-{`-- 1. Setup Session Token Column
-ALTER TABLE public.students ADD COLUMN IF NOT EXISTS session_token text;
-
--- 2. Function: student_login_secure (Credentials Login)
-CREATE OR REPLACE FUNCTION student_login_secure(phone_input text, pass_input text)
-RETURNS json AS $$
-DECLARE
-    result_data json;
-    s_record record;
-    new_token text;
-BEGIN
-    -- Find student
-    SELECT * INTO s_record FROM students s 
-    WHERE TRIM(s.mobile::text) = TRIM(phone_input) AND s.password = pass_input
-    LIMIT 1;
-
-    IF FOUND THEN
-        -- Generate 18 digit random token
-        new_token := floor(random() * (999999999999999999 - 100000000000000000 + 1) + 100000000000000000)::text;
-        
-        -- Update student with new token
-        UPDATE students SET session_token = new_token WHERE id = s_record.id;
-        
-        -- Return Data
-        SELECT json_agg(
-            json_build_object(
-                'student_profile', (SELECT row_to_json(st) FROM (SELECT *, new_token as session_token FROM students WHERE id = s_record.id) st),
-                
-                'class_info', (
-                    SELECT json_build_object(
-                        'school_fees', c.school_fees,
-                        'class_teacher', (
-                            SELECT json_build_object('name', st.name, 'mobile', st.mobile) 
-                            FROM staff st WHERE st.staff_id = c.staff_id
-                        ),
-                        'time_table', (
-                            SELECT COALESCE(json_agg(json_build_object(
-                                'subject', sub.subject_name,
-                                'teacher', st_sub.name,
-                                'time', to_char(ac.incoming_time, 'HH12:MI AM') || ' - ' || to_char(ac.outgoing_time, 'HH12:MI AM')
-                            )), '[]'::json)
-                            FROM assign_class ac
-                            JOIN subjects sub ON ac.subject_id = sub.id
-                            LEFT JOIN staff st_sub ON ac.staff_id = st_sub.staff_id
-                            WHERE ac.class_id = c.id
-                        )
-                    )
-                    FROM classes c
-                    WHERE c.class_name = s_record.class AND c.uid = s_record.uid
-                    LIMIT 1
-                ),
-
-                'school_info', (
-                    SELECT json_build_object(
-                        'school_name', o.school_name,
-                        'address', o.address,
-                        'principal_name', o.principal_name,
-                        'school_image_url', o.school_image_url,
-                        'mobile', o.mobile_number,
-                        'website', o.website
-                    )
-                    FROM owner o WHERE o.uid = s_record.uid
-                ),
-                
-                'exam_results', (
-                    SELECT COALESCE(json_agg(r), '[]'::json)
-                    FROM exam_results r
-                    WHERE r.uid = s_record.uid AND r.class = s_record.class AND r.roll_number = s_record.roll_number
-                ),
-                
-                'attendance_records', (
-                    SELECT COALESCE(json_agg(
-                        json_build_object(
-                            'date', a.date,
-                            'status', CASE
-                                WHEN s_record.roll_number = ANY(string_to_array(a.present, ',')) THEN 'Present'
-                                WHEN s_record.roll_number = ANY(string_to_array(a.absent, ',')) THEN 'Absent'
-                                ELSE 'Holiday'
-                            END
-                        )
-                    ), '[]'::json)
-                    FROM attendance a
-                    JOIN classes c ON a.class_id = c.id
-                    WHERE c.uid = s_record.uid AND c.class_name = s_record.class
-                    AND (
-                        s_record.roll_number = ANY(string_to_array(a.present, ','))
-                        OR
-                        s_record.roll_number = ANY(string_to_array(a.absent, ','))
-                    )
-                    AND a.date >= (EXTRACT(YEAR FROM CURRENT_DATE)::text || '-01-01')::date
-                )
-            )
-        ) INTO result_data;
-    END IF;
-
-    RETURN result_data;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
-
--- 3. Function: student_login_by_token (Auto Login)
-CREATE OR REPLACE FUNCTION student_login_by_token(token_input text)
-RETURNS json AS $$
-DECLARE
-    result_data json;
-    s_record record;
-BEGIN
-    SELECT * INTO s_record FROM students s WHERE s.session_token = token_input LIMIT 1;
-
-    IF FOUND THEN
-         -- Reuse logic by calling main login with verified credentials (simulated)
-         -- But to avoid recursion issues or password checks, we reconstruct the JSON here directly
-         SELECT json_agg(
-            json_build_object(
-                'student_profile', s_record,
-                
-                'class_info', (
-                    SELECT json_build_object(
-                        'school_fees', c.school_fees,
-                        'class_teacher', (SELECT json_build_object('name', st.name, 'mobile', st.mobile) FROM staff st WHERE st.staff_id = c.staff_id),
-                        'time_table', (
-                            SELECT COALESCE(json_agg(json_build_object(
-                                'subject', sub.subject_name,
-                                'teacher', st_sub.name,
-                                'time', to_char(ac.incoming_time, 'HH12:MI AM') || ' - ' || to_char(ac.outgoing_time, 'HH12:MI AM')
-                            )), '[]'::json)
-                            FROM assign_class ac
-                            JOIN subjects sub ON ac.subject_id = sub.id
-                            LEFT JOIN staff st_sub ON ac.staff_id = st_sub.staff_id
-                            WHERE ac.class_id = c.id
-                        )
-                    )
-                    FROM classes c
-                    WHERE c.class_name = s_record.class AND c.uid = s_record.uid
-                    LIMIT 1
-                ),
-                'school_info', (
-                    SELECT json_build_object(
-                        'school_name', o.school_name,
-                        'address', o.address,
-                        'principal_name', o.principal_name,
-                        'school_image_url', o.school_image_url,
-                        'mobile', o.mobile_number,
-                        'website', o.website
-                    )
-                    FROM owner o WHERE o.uid = s_record.uid
-                ),
-                'exam_results', (
-                    SELECT COALESCE(json_agg(r), '[]'::json)
-                    FROM exam_results r
-                    WHERE r.uid = s_record.uid AND r.class = s_record.class AND r.roll_number = s_record.roll_number
-                ),
-                'attendance_records', (
-                    SELECT COALESCE(json_agg(json_build_object('date', a.date, 'status', CASE WHEN s_record.roll_number = ANY(string_to_array(a.present, ',')) THEN 'Present' ELSE 'Absent' END)), '[]'::json)
-                    FROM attendance a JOIN classes c ON a.class_id = c.id
-                    WHERE c.uid = s_record.uid AND c.class_name = s_record.class AND (s_record.roll_number = ANY(string_to_array(a.present, ',')) OR s_record.roll_number = ANY(string_to_array(a.absent, ',')))
-                    AND a.date >= (EXTRACT(YEAR FROM CURRENT_DATE)::text || '-01-01')::date
-                )
-            )
-        ) INTO result_data;
-    END IF;
-    RETURN result_data;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;`}
-                            </pre>
-                        </div>
-                        
-                        <div className="bg-blue-50 p-6 rounded-lg border border-blue-100 text-sm text-blue-800 mt-6">
-                            <h4 className="font-bold mb-3 text-lg">Setup Instructions (Important Update)</h4>
-                            <ol className="list-decimal list-inside space-y-2">
-                                <li>Open your <strong>Supabase Dashboard</strong> and navigate to your project.</li>
-                                <li>Click on the <strong>SQL Editor</strong> icon in the left sidebar.</li>
-                                <li>Click <strong>New Query</strong> to open a blank editor.</li>
-                                <li><strong>Copy</strong> the entire code block above and paste it into the editor.</li>
-                                <li>Click the <strong>Run</strong> button (bottom right).</li>
-                                <li>
-                                    <span className="font-bold text-blue-700">Done:</span> This enables Token-based login, Class Teacher details, and Time Table display.
-                                </li>
-                            </ol>
-                        </div>
-                    </div>
-                )}
-
-
-                {/* Tab 5: FAQ */}
+                {/* Tab 4: FAQ */}
                 {activeTab === 'faq' && (
                     <div className="animate-fade-in-up bg-white rounded-2xl shadow p-8 space-y-6">
                         <FAQItem q="How do I delete a student?" a="Go to the Students page. In the table row for the student, click the Red Trash Icon. Note: This will also delete their exam results." />
                         <FAQItem q="How to collect fees?" a="Go to Students page -> Click the Eye Icon (View Profile). In the profile popup, scroll to the Fees section. Click 'Pay' next to the specific month." />
                         <FAQItem q="Can I edit an ID Card after generating?" a="No, the PDF is final. To change data, edit the Student Profile first, then regenerate the ID Card." />
                         <FAQItem q="My AI Helper isn't working?" a="Ensure your internet connection is stable. If it says 'ContentUnion error', try refreshing. The AI needs to connect to Google's servers." />
-                        <FAQItem q="Student Login says 'Invalid Credentials'?" a="Ensure you have added a 'password' for the student in the Student Edit Modal. Also ensure you have run the SQL script mentioned in the 'Student App Setup' tab." />
+                        <FAQItem q="Student Login says 'Invalid Credentials'?" a="Ensure you have added a 'password' for the student in the Student Edit Modal." />
                     </div>
                 )}
 
