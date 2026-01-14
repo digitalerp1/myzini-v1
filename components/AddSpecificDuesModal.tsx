@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../services/supabase';
 import { Class, Student } from '../types';
@@ -13,7 +14,9 @@ const monthNames = ["january", "february", "march", "april", "may", "june", "jul
 const AddSpecificDuesModal: React.FC<AddSpecificDuesModalProps> = ({ onClose, onSuccess }) => {
     const [classes, setClasses] = useState<Class[]>([]);
     const [students, setStudents] = useState<Student[]>([]);
-    const [selectedClass, setSelectedClass] = useState('');
+    
+    // Changed from single string to array of strings
+    const [selectedClasses, setSelectedClasses] = useState<string[]>([]);
     const [selectedMonths, setSelectedMonths] = useState<string[]>([]);
     const [selectedStudentIds, setSelectedStudentIds] = useState<number[]>([]);
     
@@ -35,22 +38,50 @@ const AddSpecificDuesModal: React.FC<AddSpecificDuesModalProps> = ({ onClose, on
         fetchClasses();
     }, []);
 
-    const handleClassChange = useCallback(async (className: string) => {
-        setSelectedClass(className);
-        setSelectedStudentIds([]); // Reset student selection
-        if (!className) {
+    // Fetch students whenever the list of selected classes changes
+    const fetchStudentsForClasses = useCallback(async (classList: string[]) => {
+        if (classList.length === 0) {
             setStudents([]);
+            setSelectedStudentIds([]); // Clear selected students if no class
             return;
         }
         setLoadingStudents(true);
-        const { data, error } = await supabase.from('students').select('*').eq('class', className).order('name');
+        
+        // Use .in() to fetch students from multiple classes
+        const { data, error } = await supabase
+            .from('students')
+            .select('*')
+            .in('class', classList)
+            .order('name');
+
         if (error) {
             setError(error.message);
         } else {
             setStudents(data as Student[]);
+            setSelectedStudentIds([]); // Reset selections when class filter changes
         }
         setLoadingStudents(false);
     }, []);
+
+    const handleClassToggle = (className: string) => {
+        const newSelection = selectedClasses.includes(className)
+            ? selectedClasses.filter(c => c !== className)
+            : [...selectedClasses, className];
+        
+        setSelectedClasses(newSelection);
+        fetchStudentsForClasses(newSelection);
+    };
+
+    const toggleAllClasses = () => {
+        if (selectedClasses.length === classes.length) {
+            setSelectedClasses([]);
+            fetchStudentsForClasses([]);
+        } else {
+            const allClasses = classes.map(c => c.class_name);
+            setSelectedClasses(allClasses);
+            fetchStudentsForClasses(allClasses);
+        }
+    };
 
     const handleMonthToggle = (month: string) => {
         setSelectedMonths(prev => prev.includes(month) ? prev.filter(m => m !== month) : [...prev, month]);
@@ -70,8 +101,8 @@ const AddSpecificDuesModal: React.FC<AddSpecificDuesModalProps> = ({ onClose, on
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!selectedClass || selectedMonths.length === 0 || selectedStudentIds.length === 0) {
-            setError("Please select a class, at least one month, and at least one student.");
+        if (selectedClasses.length === 0 || selectedMonths.length === 0 || selectedStudentIds.length === 0) {
+            setError("Please select at least one class, one month, and one student.");
             return;
         }
 
@@ -113,48 +144,69 @@ const AddSpecificDuesModal: React.FC<AddSpecificDuesModalProps> = ({ onClose, on
                 <form onSubmit={handleSubmit} className="flex-grow overflow-y-auto space-y-6 pr-2 -mr-2">
                     {loading ? <div className="flex justify-center"><Spinner /></div> : (
                         <>
+                            {/* 1. Class Selection */}
                             <div>
-                                <label htmlFor="class" className="block text-sm font-medium text-gray-700">1. Select Class</label>
-                                <select id="class" value={selectedClass} onChange={(e) => handleClassChange(e.target.value)} required className="mt-1 input-field" disabled={saving}>
-                                    <option value="">-- Choose a class --</option>
-                                    {classes.map(c => <option key={c.id} value={c.class_name}>{c.class_name}</option>)}
-                                </select>
+                                <div className="flex justify-between items-center mb-2">
+                                    <label className="block text-sm font-medium text-gray-700">1. Select Classes</label>
+                                    <button type="button" onClick={toggleAllClasses} disabled={saving} className="text-sm font-medium text-primary hover:text-primary-dark disabled:text-gray-400">
+                                        {selectedClasses.length === classes.length ? 'Deselect All' : 'Select All'}
+                                    </button>
+                                </div>
+                                <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-2 border border-gray-200 p-3 rounded-md max-h-40 overflow-y-auto">
+                                    {classes.map(c => (
+                                        <label key={c.id} className={`flex items-center space-x-2 p-1.5 rounded-md ${saving ? 'cursor-not-allowed' : 'hover:bg-gray-100 cursor-pointer'}`}>
+                                            <input 
+                                                type="checkbox" 
+                                                checked={selectedClasses.includes(c.class_name)} 
+                                                onChange={() => handleClassToggle(c.class_name)} 
+                                                disabled={saving} 
+                                                className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                                            />
+                                            <span className="text-sm">{c.class_name}</span>
+                                        </label>
+                                    ))}
+                                </div>
                             </div>
 
-                            <div className={!selectedClass ? 'opacity-50' : ''}>
-                                <div className="flex justify-between items-center">
+                            {/* 2. Month Selection */}
+                            <div className={selectedClasses.length === 0 ? 'opacity-50' : ''}>
+                                <div className="flex justify-between items-center mb-2">
                                     <label className="block text-sm font-medium text-gray-700">2. Select Months</label>
-                                    <button type="button" onClick={toggleAllMonths} disabled={!selectedClass || saving} className="text-sm font-medium text-primary hover:text-primary-dark disabled:text-gray-400">
+                                    <button type="button" onClick={toggleAllMonths} disabled={selectedClasses.length === 0 || saving} className="text-sm font-medium text-primary hover:text-primary-dark disabled:text-gray-400">
                                         {selectedMonths.length === monthNames.length ? 'Deselect All' : 'Select All'}
                                     </button>
                                 </div>
-                                <div className="mt-2 grid grid-cols-3 sm:grid-cols-4 gap-2 border border-gray-200 p-3 rounded-md">
+                                <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-2 border border-gray-200 p-3 rounded-md">
                                     {monthNames.map(month => (
-                                        <label key={month} className={`flex items-center space-x-2 p-1.5 rounded-md ${!selectedClass || saving ? 'cursor-not-allowed' : 'hover:bg-gray-100 cursor-pointer'}`}>
-                                            <input type="checkbox" checked={selectedMonths.includes(month)} onChange={() => handleMonthToggle(month)} disabled={!selectedClass || saving} className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"/>
+                                        <label key={month} className={`flex items-center space-x-2 p-1.5 rounded-md ${selectedClasses.length === 0 || saving ? 'cursor-not-allowed' : 'hover:bg-gray-100 cursor-pointer'}`}>
+                                            <input type="checkbox" checked={selectedMonths.includes(month)} onChange={() => handleMonthToggle(month)} disabled={selectedClasses.length === 0 || saving} className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"/>
                                             <span className="text-sm capitalize">{month}</span>
                                         </label>
                                     ))}
                                 </div>
                             </div>
                             
-                            <div className={!selectedClass ? 'opacity-50' : ''}>
-                                <div className="flex justify-between items-center">
-                                    <label className="block text-sm font-medium text-gray-700">3. Select Students</label>
-                                    <button type="button" onClick={toggleAllStudents} disabled={!selectedClass || saving || loadingStudents} className="text-sm font-medium text-primary hover:text-primary-dark disabled:text-gray-400">
+                            {/* 3. Student Selection */}
+                            <div className={selectedClasses.length === 0 ? 'opacity-50' : ''}>
+                                <div className="flex justify-between items-center mb-2">
+                                    <label className="block text-sm font-medium text-gray-700">3. Select Students ({students.length} found)</label>
+                                    <button type="button" onClick={toggleAllStudents} disabled={selectedClasses.length === 0 || saving || loadingStudents} className="text-sm font-medium text-primary hover:text-primary-dark disabled:text-gray-400">
                                         {selectedStudentIds.length === students.length && students.length > 0 ? 'Deselect All' : 'Select All'}
                                     </button>
                                 </div>
                                 <div className="mt-2 border border-gray-200 p-3 rounded-md h-64 overflow-y-auto">
                                     {loadingStudents ? <div className="flex justify-center items-center h-full"><Spinner/></div> :
-                                     !selectedClass ? <p className="text-center text-gray-500">Please select a class to see students.</p> :
-                                     students.length === 0 ? <p className="text-center text-gray-500">No students found in this class.</p> :
+                                     selectedClasses.length === 0 ? <p className="text-center text-gray-500">Please select classes above to load students.</p> :
+                                     students.length === 0 ? <p className="text-center text-gray-500">No students found in the selected classes.</p> :
                                      (
                                         <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2">
                                             {students.map(student => (
                                                 <label key={student.id} className="flex items-center space-x-2 p-1.5 rounded-md hover:bg-gray-100 cursor-pointer">
                                                     <input type="checkbox" checked={selectedStudentIds.includes(student.id)} onChange={() => handleStudentToggle(student.id)} className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"/>
-                                                    <span className="text-sm">{student.name} <span className="text-gray-500">(R:{student.roll_number})</span></span>
+                                                    <span className="text-sm">
+                                                        {student.name} 
+                                                        <span className="text-xs text-gray-500 block ml-6">({student.class} - R:{student.roll_number})</span>
+                                                    </span>
                                                 </label>
                                             ))}
                                         </div>
@@ -170,7 +222,7 @@ const AddSpecificDuesModal: React.FC<AddSpecificDuesModalProps> = ({ onClose, on
                     <button type="button" onClick={onClose} disabled={saving} className="px-6 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 disabled:opacity-50">
                         Cancel
                     </button>
-                    <button onClick={handleSubmit} disabled={saving || !selectedClass || selectedMonths.length === 0 || selectedStudentIds.length === 0} className="px-6 py-2 bg-indigo-500 text-white rounded-md hover:bg-indigo-600 disabled:bg-gray-400 flex items-center gap-2">
+                    <button onClick={handleSubmit} disabled={saving || selectedClasses.length === 0 || selectedMonths.length === 0 || selectedStudentIds.length === 0} className="px-6 py-2 bg-indigo-500 text-white rounded-md hover:bg-indigo-600 disabled:bg-gray-400 flex items-center gap-2">
                         {saving && <Spinner size="5" />}
                         {saving ? 'Adding Dues...' : 'Confirm and Add Dues'}
                     </button>
