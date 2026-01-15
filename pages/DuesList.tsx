@@ -40,7 +40,11 @@ const DuesList: React.FC = () => {
     
     const [classes, setClasses] = useState<Class[]>([]);
     const [feeTypes, setFeeTypes] = useState<FeeType[]>([]);
+    
+    // Filters
     const [filter, setFilter] = useState('all');
+    const [searchQuery, setSearchQuery] = useState('');
+    const [selectedClassFilter, setSelectedClassFilter] = useState('');
 
     const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
     const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
@@ -54,7 +58,7 @@ const DuesList: React.FC = () => {
 
             const [studentsRes, classesRes, feesRes, profileRes] = await Promise.all([
                 supabase.from('students').select('*'),
-                supabase.from('classes').select('*'),
+                supabase.from('classes').select('*').order('class_name'),
                 supabase.from('fees_types').select('*'),
                 supabase.from('owner').select('*').eq('uid', user.id).single()
             ]);
@@ -79,7 +83,7 @@ const DuesList: React.FC = () => {
         fetchData();
     }, [fetchData]);
 
-    // Logic to process dues based on the selected filter
+    // Logic to process dues based on the selected filters
     useEffect(() => {
         if (allStudents.length === 0) return;
 
@@ -87,6 +91,21 @@ const DuesList: React.FC = () => {
         const studentsWithCalculatedDues: StudentWithDues[] = [];
 
         allStudents.forEach(student => {
+            // 1. Filter by Class
+            if (selectedClassFilter && student.class !== selectedClassFilter) {
+                return;
+            }
+
+            // 2. Filter by Search Query (Name or Roll Number)
+            if (searchQuery) {
+                const query = searchQuery.toLowerCase();
+                const nameMatch = student.name.toLowerCase().includes(query);
+                const rollMatch = student.roll_number?.toLowerCase().includes(query);
+                if (!nameMatch && !rollMatch) {
+                    return;
+                }
+            }
+
             let calculatedDue = 0;
             const classFee = classFeesMap.get(student.class || '') || 0;
 
@@ -148,7 +167,7 @@ const DuesList: React.FC = () => {
         studentsWithCalculatedDues.sort((a,b) => b.dueAmount - a.dueAmount);
         setFilteredStudents(studentsWithCalculatedDues);
 
-    }, [filter, allStudents, classes]);
+    }, [filter, allStudents, classes, searchQuery, selectedClassFilter]);
 
     const sendWhatsApp = (student: StudentWithDues) => {
         if (!student.mobile) {
@@ -236,11 +255,41 @@ const DuesList: React.FC = () => {
 
     return (
         <div className="bg-white p-8 rounded-xl shadow-lg">
-            <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
-                <h1 className="text-3xl font-bold text-gray-800">Fee Dues List</h1>
-                <div className="flex items-center gap-2">
-                    <label htmlFor="filter" className="text-sm font-medium text-gray-700">Showing Dues For:</label>
-                    <select id="filter" value={filter} onChange={e => setFilter(e.target.value)} className="input-field border-primary text-primary font-semibold">
+            <h1 className="text-3xl font-bold text-gray-800 mb-6">Fee Dues List</h1>
+            
+            <div className="flex flex-col xl:flex-row justify-between items-center gap-4 mb-6 bg-gray-50 p-4 rounded-lg border border-gray-100">
+                <div className="flex flex-col md:flex-row gap-4 w-full xl:w-auto">
+                     {/* Search Input */}
+                    <div className="relative w-full md:w-64">
+                        <input 
+                            type="text" 
+                            placeholder="Search Name or Roll No..." 
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="input-field w-full pl-10"
+                        />
+                        <svg className="w-5 h-5 text-gray-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                    </div>
+
+                    {/* Class Filter */}
+                    <div className="w-full md:w-48">
+                        <select 
+                            value={selectedClassFilter} 
+                            onChange={(e) => setSelectedClassFilter(e.target.value)} 
+                            className="input-field w-full"
+                        >
+                            <option value="">All Classes</option>
+                            {classes.map(c => (
+                                <option key={c.id} value={c.class_name}>{c.class_name}</option>
+                            ))}
+                        </select>
+                    </div>
+                </div>
+
+                {/* Category Filter */}
+                <div className="flex items-center gap-2 w-full xl:w-auto">
+                    <label htmlFor="filter" className="text-sm font-medium text-gray-700 whitespace-nowrap">Dues Category:</label>
+                    <select id="filter" value={filter} onChange={e => setFilter(e.target.value)} className="input-field border-primary text-primary font-semibold flex-1">
                         <option value="all">Everything (Total Dues)</option>
                         <optgroup label="Specific Month">
                             {months.map(m => <option key={m} value={`month:${m}`} className="capitalize">{m}</option>)}
@@ -255,7 +304,7 @@ const DuesList: React.FC = () => {
             {filteredStudents.length === 0 ? (
                 <div className="text-center text-gray-500 py-20 bg-green-50 rounded-lg border border-green-100">
                     <h2 className="text-2xl font-bold text-green-600">All Clear!</h2>
-                    <p className="mt-2 text-green-800">No pending dues found for the selected category.</p>
+                    <p className="mt-2 text-green-800">No pending dues found matching your criteria.</p>
                 </div>
             ) : (
                 <div className="overflow-x-auto">
