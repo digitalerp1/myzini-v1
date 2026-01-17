@@ -49,12 +49,10 @@ const monthKeys: (keyof Student)[] = ['january', 'february', 'march', 'april', '
 
 const parsePaidAmount = (status: string | undefined | null): number => {
     if (!status || status === 'undefined' || status === 'Dues') return 0;
-    // Check if it's a legacy full date string
-    if (/^\d{4}-\d{2}-\d{2}/.test(status) && !status.includes('=d=')) return Infinity;
-    // Check if it's the new partial payment format: amount=d=date;amount2=d=date2
+    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(status)) return Infinity;
     return status.split(';').reduce((total, p) => {
         const parts = p.split('=d=');
-        return total + (parts.length >= 1 ? parseFloat(parts[0]) || 0 : 0);
+        return total + (parts.length === 2 ? parseFloat(parts[0]) || 0 : 0);
     }, 0);
 };
 
@@ -62,15 +60,10 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
     const [data, setData] = useState<DashboardData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [trialExpired, setTrialExpired] = useState(false);
     
-    // Premium Tracking UI State
-    const [premiumMeta, setPremiumMeta] = useState<{
-        statusLabel: string;
-        timeLabel: string;
-        time: { days: number; hours: number; min: number; sec: number };
-        isExpired: boolean;
-        isPremium: boolean;
-    } | null>(null);
+    const [timeLeft, setTimeLeft] = useState<{days: number, hours: number, min: number, sec: number} | null>(null);
+    const [currentPremiumPrice, setCurrentPremiumPrice] = useState(999);
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -92,13 +85,53 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
 
             if (studentsRes.error) throw studentsRes.error;
 
-            const students = studentsRes.data as Student[] || [];
-            const staff = staffRes.data as Staff[] || [];
-            const classes = classesRes.data as Class[] || [];
-            const expenses = expensesRes.data as Expense[] || [];
-            const salaries = salaryRes.data as SalaryRecord[] || [];
-            const attendance = attRes.data as Attendance[] || [];
+            const students = studentsRes.data as Student[];
+            const staff = staffRes.data as Staff[];
+            const classes = classesRes.data as Class[];
+            const expenses = expensesRes.data as Expense[];
+            const salaries = salaryRes.data as SalaryRecord[];
+            const attendance = attRes.data as Attendance[];
             const ownerProfile = ownerRes.data;
+
+            // --- PREMIUM & TRIAL ENFORCEMENT LOGIC ---
+            if (ownerProfile) {
+                const now = new Date();
+                const regDate = new Date(ownerProfile.register_date);
+                const diffTime = Math.abs(now.getTime() - regDate.getTime());
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                
+                let shouldUpdateDB = false;
+                let updateData: any = {};
+
+                // Check end_premium (Format: 2026-01-23-12:19)
+                if (ownerProfile.end_premium) {
+                    // Convert custom format YYYY-MM-DD-HH:mm to standard YYYY-MM-DD HH:mm for parsing
+                    const dateParts = ownerProfile.end_premium.split('-');
+                    const formattedExpiryStr = `${dateParts[0]}-${dateParts[1]}-${dateParts[2]} ${dateParts[3]}`;
+                    const expiryDate = new Date(formattedExpiryStr);
+
+                    if (now > expiryDate) {
+                        updateData.premium_status = "";
+                        updateData.end_premium = "";
+                        shouldUpdateDB = true;
+                    }
+                } 
+                // Check 90 Days Trial Logic (only if end_premium is not set)
+                else if (diffDays > 90) {
+                    setTrialExpired(true);
+                    if (ownerProfile.premium_status) {
+                        updateData.premium_status = "";
+                        shouldUpdateDB = true;
+                    }
+                }
+
+                if (shouldUpdateDB) {
+                    await supabase.from('owner').update(updateData).eq('uid', user.id);
+                    // Refresh profile in local state
+                    ownerProfile.premium_status = updateData.premium_status ?? ownerProfile.premium_status;
+                    ownerProfile.end_premium = updateData.end_premium ?? ownerProfile.end_premium;
+                }
+            }
 
             const classFeesMap = new Map(classes.map(c => [c.class_name, c.school_fees || 0]));
             let totalRevenue = 0;
@@ -113,7 +146,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
             students.forEach(s => {
                 const className = s.class || '';
                 const fee = classFeesMap.get(className) || 0;
-                let studentIsFullyPaid = true;
+                let studentHasDues = false;
 
                 if (s.registration_date) {
                     const d = new Date(s.registration_date);
@@ -124,6 +157,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                 casteMap.set(c, (casteMap.get(c) || 0) + 1);
 
                 totalDues += (s.previous_dues || 0);
+                if ((s.previous_dues || 0) > 0) studentHasDues = true;
 
                 monthKeys.forEach((key, idx) => {
                     const status = s[key] as string;
@@ -131,26 +165,19 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                     const actualPaid = paid === Infinity ? fee : paid;
                     
                     totalRevenue += actualPaid;
-                    
-                    // Group revenue by payment date if possible
-                    if (status && status.includes('=d=')) {
-                        const firstDateStr = status.split(';')[0].split('=d=')[1];
-                        const d = new Date(firstDateStr);
-                        if (!isNaN(d.getTime()) && d.getFullYear() === currentYear) {
-                            monthlyRevenue[d.getMonth()] += actualPaid;
-                        }
-                    }
+                    const d = status && /^\d{4}/.test(status) ? new Date(status.split(';')[0].split('=d=')[1] || status) : null;
+                    if (d && d.getFullYear() === currentYear) monthlyRevenue[d.getMonth()] += actualPaid;
 
                     if (idx <= currentMonthIdx) {
                         const due = fee - actualPaid;
                         if (due > 0) {
                             totalDues += due;
-                            studentIsFullyPaid = false;
+                            studentHasDues = true;
                         }
                     }
                 });
 
-                if (studentIsFullyPaid) paidStudentsCount++;
+                if (!studentHasDues) paidStudentsCount++;
             });
 
             let presentCount = 0;
@@ -194,8 +221,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                     label, value, color: ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#ec4899'][i % 5]
                 })),
                 feeStatusData: [
-                    { label: 'Cleared', value: paidStudentsCount, color: '#10b981' },
-                    { label: 'Due', value: students.length - paidStudentsCount, color: '#f59e0b' }
+                    { label: 'Fully Paid', value: paidStudentsCount, color: '#10b981' },
+                    { label: 'Pending', value: students.length - paidStudentsCount, color: '#f59e0b' }
                 ],
                 revenueTrend: monthlyRevenue.map((val, i) => ({ label: monthNames[i], value: val })),
                 admissionTrend: monthlyAdmissions.map((val, i) => ({ label: monthNames[i], value: val })),
@@ -213,48 +240,35 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
 
     useEffect(() => { fetchData(); }, [fetchData]);
 
-    // --- TIMER & PREMIUM LOGIC ---
     useEffect(() => {
-        if (!data?.schoolProfile) return;
+        if (!data?.schoolProfile?.register_date) return;
 
-        const timerInterval = setInterval(() => {
+        const regDate = new Date(data.schoolProfile.register_date);
+        const trialEndDate = new Date(regDate.getTime() + 90 * 24 * 60 * 60 * 1000);
+
+        const timer = setInterval(() => {
             const now = new Date();
-            const profile = data.schoolProfile;
-            let targetDate: Date;
-            let isPremium = false;
+            const diff = trialEndDate.getTime() - now.getTime();
 
-            if (profile.end_premium && profile.end_premium.trim() !== "") {
-                // PREMIUM MODE: Parse YYYY-MM-DD-HH:mm
-                const p = profile.end_premium.split('-');
-                const dateStr = `${p[0]}-${p[1]}-${p[2]}T${p[3]}:00`;
-                targetDate = new Date(dateStr);
-                isPremium = true;
+            if (diff <= 0) {
+                setTimeLeft({ days: 0, hours: 0, min: 0, sec: 0 });
+                clearInterval(timer);
             } else {
-                // TRIAL MODE: 90 Days from registration
-                const regDate = new Date(profile.register_date);
-                targetDate = new Date(regDate.getTime() + (90 * 24 * 60 * 60 * 1000));
-                isPremium = false;
+                setTimeLeft({
+                    days: Math.floor(diff / (1000 * 60 * 60 * 24)),
+                    hours: Math.floor((diff / (1000 * 60 * 60)) % 24),
+                    min: Math.floor((diff / 1000 / 60) % 60),
+                    sec: Math.floor((diff / 1000) % 60)
+                });
             }
 
-            const diff = targetDate.getTime() - now.getTime();
-            const isExpired = diff <= 0;
-            const absDiff = Math.abs(diff);
+            const daysSinceReg = Math.floor((now.getTime() - regDate.getTime()) / (1000 * 60 * 60 * 24));
+            const calculatedPrice = 999 + (daysSinceReg * 10);
+            setCurrentPremiumPrice(Math.min(calculatedPrice, 1299));
 
-            setPremiumMeta({
-                isPremium,
-                isExpired,
-                statusLabel: isExpired ? "Subscription Expired" : (isPremium ? "Premium Protection Active" : "Free Trial Active"),
-                timeLabel: isExpired ? "Time since expiry" : "Remaining Time",
-                time: {
-                    days: Math.floor(absDiff / (1000 * 60 * 60 * 24)),
-                    hours: Math.floor((absDiff / (1000 * 60 * 60)) % 24),
-                    min: Math.floor((absDiff / 1000 / 60) % 60),
-                    sec: Math.floor((absDiff / 1000) % 60)
-                }
-            });
         }, 1000);
 
-        return () => clearInterval(timerInterval);
+        return () => clearInterval(timer);
     }, [data?.schoolProfile]);
 
     if (loading) return <div className="flex items-center justify-center h-screen bg-gray-50"><Spinner size="12"/></div>;
@@ -266,54 +280,82 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
     return (
         <div className="space-y-8 animate-fade-in pb-12">
             <style>{`
-                @keyframes flow { from { background-position: 0% 50%; } to { background-position: 100% 50%; } }
+                @keyframes blink {
+                    0% { opacity: 1; transform: scale(1); }
+                    50% { opacity: 0.5; transform: scale(0.98); }
+                    100% { opacity: 1; transform: scale(1); }
+                }
+                .bhuk-bhak {
+                    animation: blink 1.5s infinite ease-in-out;
+                }
                 .premium-banner {
                     background: linear-gradient(90deg, #4f46e5, #9333ea, #db2777);
                     background-size: 200% 200%;
-                    animation: flow 5s linear infinite;
+                    animation: gradientShift 5s ease infinite;
                 }
-                .trial-banner {
-                    background: linear-gradient(90deg, #1e2937, #4b5563);
-                }
-                .expired-banner {
-                    background: linear-gradient(90deg, #b91c1c, #450a0a);
+                @keyframes gradientShift {
+                    0% { background-position: 0% 50%; }
+                    50% { background-position: 100% 50%; }
+                    100% { background-position: 0% 50%; }
                 }
             `}</style>
 
-            {/* Premium Header Banner */}
-            {premiumMeta && (
-                <div className={`rounded-3xl p-8 text-white shadow-2xl relative overflow-hidden border-4 border-white ${premiumMeta.isExpired ? 'expired-banner' : premiumMeta.isPremium ? 'premium-banner' : 'trial-banner'}`}>
-                    <div className="flex flex-col md:flex-row justify-between items-center gap-8 relative z-10">
+            {/* Trial Expiry Alert */}
+            {trialExpired && !data.schoolProfile?.premium_status && (
+                <div className="bg-rose-600 text-white p-4 rounded-xl shadow-lg flex items-center justify-between mb-4 border-2 border-white animate-pulse">
+                    <div className="flex items-center gap-3">
+                        <span className="text-2xl">⚠️</span>
+                        <div>
+                            <p className="font-black text-lg">90-Day Free Trial Expired</p>
+                            <p className="text-xs opacity-90">Please activate your account to avoid data restriction.</p>
+                        </div>
+                    </div>
+                    <a href="tel:9241981083" className="bg-white text-rose-600 px-4 py-2 rounded-lg font-black text-sm hover:bg-rose-50 transition-colors">ACTIVATE NOW</a>
+                </div>
+            )}
+
+            {/* Promotion Banner */}
+            {timeLeft && (
+                <div className="premium-banner rounded-3xl p-6 text-white shadow-2xl overflow-hidden relative border-4 border-yellow-400 bhuk-bhak">
+                    <div className="absolute -right-10 -top-10 opacity-10 rotate-12">
+                        <RupeeIcon className="w-64 h-64" />
+                    </div>
+                    <div className="flex flex-col md:flex-row justify-between items-center gap-6 relative z-10">
                         <div className="text-center md:text-left">
-                            <h2 className="text-4xl font-black tracking-tighter uppercase mb-1">
-                                {premiumMeta.isExpired ? '⚠️ ' : '💎 '}{premiumMeta.statusLabel}
-                            </h2>
-                            <p className="text-white/80 font-bold text-lg">
-                                {premiumMeta.isExpired ? 'Your institutional access period has ended. Contact support for renewal.' : 'Your high-security administrative environment is fully functional.'}
-                            </p>
-                            
-                            <div className="mt-6 flex flex-wrap justify-center md:justify-start gap-4">
-                                {[
-                                    {v: premiumMeta.time.days, l: 'Days'},
-                                    {v: premiumMeta.time.hours, l: 'Hrs'},
-                                    {v: premiumMeta.time.min, l: 'Min'},
-                                    {v: premiumMeta.time.sec, l: 'Sec', c: 'text-yellow-300'}
-                                ].map((t, idx) => (
-                                    <div key={idx} className="bg-black/20 px-5 py-3 rounded-2xl backdrop-blur-md border border-white/20 text-center min-w-[90px]">
-                                        <span className={`block text-3xl font-black ${t.c || ''}`}>{t.v}</span>
-                                        <span className="text-[10px] uppercase font-bold tracking-widest opacity-60">{t.l}</span>
-                                    </div>
-                                ))}
+                            <h2 className="text-3xl font-black tracking-tighter uppercase mb-1">🎁 Limited Time Free Trial 🎁</h2>
+                            <p className="text-indigo-100 font-bold text-lg">Your high-security administrative environment is active.</p>
+                            <div className="mt-4 flex flex-wrap justify-center md:justify-start gap-4">
+                                <div className="bg-white/20 px-4 py-2 rounded-xl backdrop-blur-md border border-white/30 text-center min-w-[80px]">
+                                    <span className="block text-2xl font-black">{timeLeft.days}</span>
+                                    <span className="text-[10px] uppercase font-bold tracking-widest">Days</span>
+                                </div>
+                                <div className="bg-white/20 px-4 py-2 rounded-xl backdrop-blur-md border border-white/30 text-center min-w-[80px]">
+                                    <span className="block text-2xl font-black">{timeLeft.hours}</span>
+                                    <span className="text-[10px] uppercase font-bold tracking-widest">Hours</span>
+                                </div>
+                                <div className="bg-white/20 px-4 py-2 rounded-xl backdrop-blur-md border border-white/30 text-center min-w-[80px]">
+                                    <span className="block text-2xl font-black">{timeLeft.min}</span>
+                                    <span className="text-[10px] uppercase font-bold tracking-widest">Mins</span>
+                                </div>
+                                <div className="bg-white/20 px-4 py-2 rounded-xl backdrop-blur-md border border-white/30 text-center min-w-[80px]">
+                                    <span className="block text-2xl font-black text-yellow-300">{timeLeft.sec}</span>
+                                    <span className="text-[10px] uppercase font-bold tracking-widest text-yellow-200">Secs</span>
+                                </div>
                             </div>
                         </div>
 
-                        <div className="bg-white/10 p-6 rounded-3xl backdrop-blur-xl border border-white/20 text-center md:text-right min-w-[300px]">
-                            <p className="text-xs font-black uppercase tracking-widest opacity-60 mb-3">Service & Activation</p>
-                            <a href="tel:9241981083" className="text-3xl font-black hover:text-yellow-400 transition-colors block mb-1">9241981083</a>
-                            <p className="text-[10px] font-bold">Contact for premium keys or technical aid</p>
-                            {premiumMeta.isExpired && (
-                                <button className="mt-6 w-full bg-white text-rose-700 font-black py-3 rounded-xl hover:bg-rose-50 transition-all shadow-xl">REACTIVATE ACCOUNT</button>
-                            )}
+                        <div className="bg-yellow-400 text-slate-900 p-6 rounded-2xl shadow-inner border-2 border-white text-center md:text-right min-w-[280px]">
+                            <p className="text-xs font-black uppercase tracking-tighter opacity-70">Exclusive Activation Offer</p>
+                            <div className="flex items-center justify-center md:justify-end gap-2 my-1">
+                                <span className="text-lg line-through opacity-50 font-bold">₹1299</span>
+                                <span className="text-4xl font-black">₹{currentPremiumPrice}</span>
+                                <span className="text-xs font-bold bg-slate-900 text-white px-2 py-0.5 rounded">/YEAR</span>
+                            </div>
+                            <p className="text-[10px] font-bold text-rose-600 mb-4">*Price increases ₹10 every 24 hours</p>
+                            <div className="bg-slate-900 text-white p-3 rounded-xl">
+                                <p className="text-[10px] font-bold uppercase mb-1 opacity-60">Contact Agent for Activation</p>
+                                <a href="tel:9241981083" className="text-xl font-black hover:text-yellow-400 transition-colors">9241981083</a>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -334,36 +376,52 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                 <StatCard title="Total Students" value={data.totalStudents} icon={<StudentsIcon className="text-white w-6 h-6"/>} color="bg-indigo-600" />
                 <StatCard title="Total Staff" value={data.totalStaff} icon={<StaffIcon className="text-white w-6 h-6"/>} color="bg-pink-600" />
                 <StatCard title="Total Classes" value={data.totalClasses} icon={<ClassesIcon className="text-white w-6 h-6"/>} color="bg-blue-600" />
-                <StatCard title="Subjects" value={data.totalSubjects} icon={<AcademicCapIcon className="text-white w-6 h-6"/>} color="bg-teal-600" />
+                <StatCard title="Subjects Taught" value={data.totalSubjects} icon={<AcademicCapIcon className="text-white w-6 h-6"/>} color="bg-teal-600" />
             </div>
 
             {/* Financial Health Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                 <StatCard title="Total Revenue" value={format(data.totalRevenue)} icon={<RupeeIcon className="text-white w-6 h-6"/>} color="bg-emerald-600" />
-                <StatCard title="Expenses" value={format(data.totalExpenses)} icon={<ExpensesIcon className="text-white w-6 h-6"/>} color="bg-rose-600" />
-                <StatCard title="Net Dues" value={format(data.totalDues)} icon={<DuesIcon className="text-white w-6 h-6"/>} color="bg-amber-500" />
-                <StatCard title="Salaries Paid" value={format(data.totalSalariesPaid)} icon={<RupeeIcon className="text-white w-6 h-6"/>} color="bg-indigo-400" />
+                <StatCard title="Net Liabilities" value={format(data.totalExpenses)} icon={<ExpensesIcon className="text-white w-6 h-6"/>} color="bg-rose-600" />
+                <StatCard title="Total Dues Amount" value={format(data.totalDues)} icon={<DuesIcon className="text-white w-6 h-6"/>} color="bg-amber-500" />
+                <StatCard title="Salaries Disbursed" value={format(data.totalSalariesPaid)} icon={<RupeeIcon className="text-white w-6 h-6"/>} color="bg-indigo-400" />
+            </div>
+
+            {/* Demographics Row */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="bg-white p-6 rounded-3xl shadow-xl border border-blue-50">
+                    <div className="flex justify-around items-center">
+                        <div className="text-center">
+                            <p className="text-blue-500 font-black text-4xl">{data.totalBoys}</p>
+                            <p className="text-gray-400 text-xs font-bold uppercase tracking-widest mt-1">Total Boys</p>
+                        </div>
+                        <div className="h-12 w-px bg-gray-100"></div>
+                        <div className="text-center">
+                            <p className="text-pink-500 font-black text-4xl">{data.totalGirls}</p>
+                            <p className="text-gray-400 text-xs font-bold uppercase tracking-widest mt-1">Total Girls</p>
+                        </div>
+                    </div>
+                </div>
+                <div className="lg:col-span-2 bg-white p-6 rounded-3xl shadow-xl border border-gray-100">
+                    <LineChart title="Fee Collection Trend (YTD)" data={data.revenueTrend} color="#10b981" />
+                </div>
             </div>
 
             {/* Analytical Charts */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <DonutChart title="Today's Attendance" data={data.attendanceToday} />
-                <DonutChart title="Gender Distribution" data={data.genderData} />
+                <DonutChart title="Today's Turnout" data={data.attendanceToday} />
+                <DonutChart title="Gender Ratio" data={data.genderData} />
                 <DonutChart title="Financial Standing" data={data.feeStatusData} />
                 
                 <div className="lg:col-span-2">
-                    <LineChart title="Collection Trend (Current Year)" data={data.revenueTrend} color="#10b981" />
+                    <SimpleBarChart title="Top 10 Class Strengths" data={data.classStrength} color="bg-indigo-400" />
                 </div>
-                <DonutChart title="Expenditure Breakdown" data={data.expenseCategory} />
+                <DonutChart title="Expense Split" data={data.expenseCategory} />
 
                 <div className="lg:col-span-2">
-                    <SimpleBarChart title="Class-wise Strength" data={data.classStrength} color="bg-indigo-400" />
+                    <SimpleBarChart title="Admission Growth (Monthly)" data={data.admissionTrend} color="bg-teal-400" />
                 </div>
-                <DonutChart title="Caste Distribution" data={data.casteData} />
-
-                <div className="lg:col-span-3">
-                    <SimpleBarChart title="Monthly Admissions" data={data.admissionTrend} color="bg-teal-400" />
-                </div>
+                <DonutChart title="Social Demographics" data={data.casteData} />
             </div>
         </div>
     );
