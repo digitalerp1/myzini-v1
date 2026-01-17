@@ -41,7 +41,7 @@ interface DashboardData {
     expenseCategory: { label: string; value: number; color: string }[];
     classStrength: { label: string; value: number }[];
     
-    schoolProfile: OwnerProfile | null;
+    schoolProfile: any; // Using any to handle end_premium and premium_status
 }
 
 const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -60,6 +60,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
     const [data, setData] = useState<DashboardData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [trialExpired, setTrialExpired] = useState(false);
     
     // Timer State
     const [timeLeft, setTimeLeft] = useState<{days: number, hours: number, min: number, sec: number} | null>(null);
@@ -91,9 +92,41 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
             const expenses = expensesRes.data as Expense[];
             const salaries = salaryRes.data as SalaryRecord[];
             const attendance = attRes.data as Attendance[];
-            const ownerProfile = ownerRes.data as OwnerProfile;
+            const ownerProfile = ownerRes.data;
 
-            // Financial Calculations
+            // --- PREMIUM & TRIAL ENFORCEMENT LOGIC ---
+            if (ownerProfile) {
+                const now = new Date();
+                const regDate = new Date(ownerProfile.register_date);
+                const diffTime = Math.abs(now.getTime() - regDate.getTime());
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                
+                let shouldUpdateDB = false;
+                let updatedStatus = ownerProfile.premium_status;
+
+                // Case 1: Subscription end_premium exists
+                if (ownerProfile.end_premium) {
+                    const expiryDate = new Date(ownerProfile.end_premium);
+                    if (now > expiryDate) {
+                        updatedStatus = ""; // Expired
+                        shouldUpdateDB = true;
+                    }
+                } 
+                // Case 2: 90 Days Trial Logic
+                else if (diffDays > 90) {
+                    setTrialExpired(true);
+                    if (ownerProfile.premium_status) {
+                        updatedStatus = ""; // Clear status on trial end
+                        shouldUpdateDB = true;
+                    }
+                }
+
+                if (shouldUpdateDB) {
+                    await supabase.from('owner').update({ premium_status: updatedStatus }).eq('uid', user.id);
+                }
+            }
+
+            // Existing Financial Calculations
             const classFeesMap = new Map(classes.map(c => [c.class_name, c.school_fees || 0]));
             let totalRevenue = 0;
             let totalDues = 0;
@@ -224,7 +257,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                 });
             }
 
-            // Price Logic: Start 999, +10 every 24h, max 1299
             const daysSinceReg = Math.floor((now.getTime() - regDate.getTime()) / (1000 * 60 * 60 * 24));
             const calculatedPrice = 999 + (daysSinceReg * 10);
             setCurrentPremiumPrice(Math.min(calculatedPrice, 1299));
@@ -263,7 +295,21 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                 }
             `}</style>
 
-            {/* Trial & Premium Banner */}
+            {/* Trial Expiry Alert */}
+            {trialExpired && !data.schoolProfile?.premium_status && (
+                <div className="bg-rose-600 text-white p-4 rounded-xl shadow-lg flex items-center justify-between mb-4 border-2 border-white animate-pulse">
+                    <div className="flex items-center gap-3">
+                        <span className="text-2xl">⚠️</span>
+                        <div>
+                            <p className="font-black text-lg">90-Day Free Trial Expired</p>
+                            <p className="text-xs opacity-90">Please activate your account to avoid data restriction.</p>
+                        </div>
+                    </div>
+                    <a href="tel:9241981083" className="bg-white text-rose-600 px-4 py-2 rounded-lg font-black text-sm hover:bg-rose-50 transition-colors">ACTIVATE NOW</a>
+                </div>
+            )}
+
+            {/* Existing Trial & Premium Banner UI */}
             {timeLeft && (
                 <div className="premium-banner rounded-3xl p-6 text-white shadow-2xl overflow-hidden relative border-4 border-yellow-400 bhuk-bhak">
                     <div className="absolute -right-10 -top-10 opacity-10 rotate-12">
