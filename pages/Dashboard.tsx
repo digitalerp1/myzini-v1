@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase } from '../services/supabase';
-import { Student, Staff, Class, Expense, Attendance, ExamResult, SalaryRecord } from '../types';
+import { Student, Staff, Class, Expense, Attendance, ExamResult, SalaryRecord, OwnerProfile } from '../types';
 import Spinner from '../components/Spinner';
 import StatCard from '../components/StatCard';
 import { DonutChart, LineChart, SimpleBarChart } from '../components/ChartComponents';
@@ -40,22 +40,19 @@ interface DashboardData {
     admissionTrend: { label: string; value: number }[];
     expenseCategory: { label: string; value: number; color: string }[];
     classStrength: { label: string; value: number }[];
+    
+    schoolProfile: OwnerProfile | null;
 }
 
 const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const fullMonthKeys: (keyof Student)[] = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+const monthKeys: (keyof Student)[] = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
 
 const parsePaidAmount = (status: string | undefined | null): number => {
     if (!status || status === 'undefined' || status === 'Dues') return 0;
-    // Legacy ISO date string check (means fully paid in old system)
     if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(status)) return Infinity;
-    
-    // Check for new format: "AMOUNT=d=DATE"
     return status.split(';').reduce((total, p) => {
         const parts = p.split('=d=');
-        // If part[0] is a number, add it
-        const val = parseFloat(parts[0]);
-        return total + (isNaN(val) ? 0 : val);
+        return total + (parts.length === 2 ? parseFloat(parts[0]) || 0 : 0);
     }, 0);
 };
 
@@ -63,21 +60,27 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
     const [data, setData] = useState<DashboardData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    
+    // Timer State
+    const [timeLeft, setTimeLeft] = useState<{days: number, hours: number, min: number, sec: number} | null>(null);
+    const [currentPremiumPrice, setCurrentPremiumPrice] = useState(999);
 
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
             const currentYear = new Date().getFullYear();
             const today = new Date().toISOString().split('T')[0];
+            const currentMonthIdx = new Date().getMonth();
 
-            const [studentsRes, staffRes, classesRes, subjectsRes, expensesRes, salaryRes, attRes] = await Promise.all([
+            const [studentsRes, staffRes, classesRes, subjectsRes, expensesRes, salaryRes, attRes, ownerRes] = await Promise.all([
                 supabase.from('students').select('*'),
                 supabase.from('staff').select('*'),
                 supabase.from('classes').select('*'),
                 supabase.from('subjects').select('*', { count: 'exact', head: true }),
                 supabase.from('expenses').select('*'),
                 supabase.from('salary_records').select('*'),
-                supabase.from('attendance').select('*').eq('date', today)
+                supabase.from('attendance').select('*').eq('date', today),
+                supabase.from('owner').select('*').eq('uid', user.id).single()
             ]);
 
             if (studentsRes.error) throw studentsRes.error;
@@ -88,16 +91,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
             const expenses = expensesRes.data as Expense[];
             const salaries = salaryRes.data as SalaryRecord[];
             const attendance = attRes.data as Attendance[];
+            const ownerProfile = ownerRes.data as OwnerProfile;
 
             // Financial Calculations
             const classFeesMap = new Map(classes.map(c => [c.class_name, c.school_fees || 0]));
             let totalRevenue = 0;
             let totalDues = 0;
-            
-            // Counters for Pie Chart
-            let feeFullyPaidCount = 0; // Students with 0 dues
-            let feePartialCount = 0; // Students with some dues but also some payment
-            let feeDuesCount = 0; // Students with dues and NO payment/interaction
+            let paidStudentsCount = 0;
             
             const monthlyRevenue = new Array(12).fill(0);
             const monthlyAdmissions = new Array(12).fill(0);
@@ -106,108 +106,52 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
 
             students.forEach(s => {
                 const className = s.class || '';
-                const monthlyFee = classFeesMap.get(className) || 0;
-                
-                // Track individual student balance to determine status category
-                let currentStudentDue = 0;
-                let currentStudentPaid = 0;
+                const fee = classFeesMap.get(className) || 0;
+                let studentHasDues = false;
 
-                // Admissions Trend
                 if (s.registration_date) {
                     const d = new Date(s.registration_date);
                     if (d.getFullYear() === currentYear) monthlyAdmissions[d.getMonth()]++;
                 }
 
-                // Caste Map
                 const c = s.caste || 'General';
                 casteMap.set(c, (casteMap.get(c) || 0) + 1);
 
-                // 1. Previous Dues (Always added to Total Dues)
-                const prevDues = s.previous_dues || 0;
-                totalDues += prevDues;
-                currentStudentDue += prevDues;
+                totalDues += (s.previous_dues || 0);
+                if ((s.previous_dues || 0) > 0) studentHasDues = true;
 
-                // 2. Monthly Fees Logic
-                fullMonthKeys.forEach((key) => {
+                monthKeys.forEach((key, idx) => {
                     const status = s[key] as string;
+                    const paid = parsePaidAmount(status);
+                    const actualPaid = paid === Infinity ? fee : paid;
+                    
+                    totalRevenue += actualPaid;
+                    const d = status && /^\d{4}/.test(status) ? new Date(status.split(';')[0].split('=d=')[1] || status) : null;
+                    if (d && d.getFullYear() === currentYear) monthlyRevenue[d.getMonth()] += actualPaid;
 
-                    // STRICT CHECK: If undefined, null, or empty -> Skip (Not billed)
-                    if (!status || status === 'undefined') {
-                        return;
-                    }
-
-                    if (status === 'Dues') {
-                        // Explicitly marked as Due
-                        totalDues += monthlyFee;
-                        currentStudentDue += monthlyFee;
-                    } else {
-                        // Attempt to parse payment
-                        const paidAmount = parsePaidAmount(status);
-                        
-                        if (paidAmount === Infinity) {
-                            // Legacy full payment
-                            const actualPaid = monthlyFee;
-                            totalRevenue += actualPaid;
-                            currentStudentPaid += actualPaid;
-                            // Add to monthly revenue trend (approximate month based on key index)
-                            // Ideally we parse date from string, but legacy ISO is just date.
-                            // For simplicity in trend, we can use current month logic or parsing
-                            const d = new Date(status); 
-                             if (!isNaN(d.getTime()) && d.getFullYear() === currentYear) {
-                                monthlyRevenue[d.getMonth()] += actualPaid;
-                            }
-                        } else {
-                            // Standard Payment Format (Amount=d=Date)
-                            // Add to revenue
-                            totalRevenue += paidAmount;
-                            currentStudentPaid += paidAmount;
-
-                            // Extract date for trend
-                            if (status.includes('=d=')) {
-                                const datePart = status.split('=d=')[1]?.split(';')[0];
-                                if (datePart) {
-                                    const d = new Date(datePart);
-                                    if (!isNaN(d.getTime()) && d.getFullYear() === currentYear) {
-                                        monthlyRevenue[d.getMonth()] += paidAmount;
-                                    }
-                                }
-                            }
-
-                            // Calculate Partial Dues
-                            if (paidAmount < monthlyFee) {
-                                const balance = monthlyFee - paidAmount;
-                                totalDues += balance;
-                                currentStudentDue += balance;
-                            }
+                    if (idx <= currentMonthIdx) {
+                        const due = fee - actualPaid;
+                        if (due > 0) {
+                            totalDues += due;
+                            studentHasDues = true;
                         }
                     }
                 });
-                
-                // Categorize Student
-                if (currentStudentDue > 0) {
-                    // Has dues
-                    if (currentStudentPaid > 0) feePartialCount++;
-                    else feeDuesCount++;
-                } else {
-                    // No dues (fully paid or not billed yet)
-                    feeFullyPaidCount++;
-                }
+
+                if (!studentHasDues) paidStudentsCount++;
             });
 
-            // Attendance Today
             let presentCount = 0;
             attendance.forEach(rec => {
                 presentCount += rec.present ? rec.present.split(',').length : 0;
             });
 
-            // Expenses & Salaries
             const totalSalariesPaid = salaries.reduce((sum, s) => sum + s.amount, 0);
             const totalExps = expenses.reduce((sum, e) => {
                 expenseMap.set(e.category, (expenseMap.get(e.category) || 0) + e.amount);
                 return sum + e.amount;
             }, 0);
 
-            // Chart Data Prep
             const expenseCategory = Array.from(expenseMap.entries()).map(([label, value], i) => ({
                 label, value, color: ['#f87171', '#60a5fa', '#34d399', '#fbbf24', '#a78bfa'][i % 5]
             }));
@@ -238,14 +182,14 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                     label, value, color: ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#ec4899'][i % 5]
                 })),
                 feeStatusData: [
-                    { label: 'Fully Paid', value: feeFullyPaidCount, color: '#10b981' },
-                    { label: 'Partial Dues', value: feePartialCount, color: '#f59e0b' },
-                    { label: 'Full Dues', value: feeDuesCount, color: '#ef4444' }
+                    { label: 'Fully Paid', value: paidStudentsCount, color: '#10b981' },
+                    { label: 'Pending', value: students.length - paidStudentsCount, color: '#f59e0b' }
                 ],
                 revenueTrend: monthlyRevenue.map((val, i) => ({ label: monthNames[i], value: val })),
                 admissionTrend: monthlyAdmissions.map((val, i) => ({ label: monthNames[i], value: val })),
                 expenseCategory,
-                classStrength: Array.from(classCountMap.entries()).map(([label, value]) => ({ label, value })).sort((a,b) => b.value - a.value).slice(0, 10)
+                classStrength: Array.from(classCountMap.entries()).map(([label, value]) => ({ label, value })).sort((a,b) => b.value - a.value).slice(0, 10),
+                schoolProfile: ownerProfile
             });
 
         } catch (err: any) {
@@ -253,18 +197,119 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [user.id]);
 
     useEffect(() => { fetchData(); }, [fetchData]);
 
+    // Countdown and Price Logic
+    useEffect(() => {
+        if (!data?.schoolProfile?.register_date) return;
+
+        const regDate = new Date(data.schoolProfile.register_date);
+        const trialEndDate = new Date(regDate.getTime() + 90 * 24 * 60 * 60 * 1000);
+
+        const timer = setInterval(() => {
+            const now = new Date();
+            const diff = trialEndDate.getTime() - now.getTime();
+
+            if (diff <= 0) {
+                setTimeLeft({ days: 0, hours: 0, min: 0, sec: 0 });
+                clearInterval(timer);
+            } else {
+                setTimeLeft({
+                    days: Math.floor(diff / (1000 * 60 * 60 * 24)),
+                    hours: Math.floor((diff / (1000 * 60 * 60)) % 24),
+                    min: Math.floor((diff / 1000 / 60) % 60),
+                    sec: Math.floor((diff / 1000) % 60)
+                });
+            }
+
+            // Price Logic: Start 999, +10 every 24h, max 1299
+            const daysSinceReg = Math.floor((now.getTime() - regDate.getTime()) / (1000 * 60 * 60 * 24));
+            const calculatedPrice = 999 + (daysSinceReg * 10);
+            setCurrentPremiumPrice(Math.min(calculatedPrice, 1299));
+
+        }, 1000);
+
+        return () => clearInterval(timer);
+    }, [data?.schoolProfile]);
+
     if (loading) return <div className="flex items-center justify-center h-screen bg-gray-50"><Spinner size="12"/></div>;
-    if (error) return <div className="text-center text-red-500 p-8">Error: {error}</div>;
+    if (error) return <div className="text-center text-red-500 p-8 text-xl font-bold">Error: {error}</div>;
     if (!data) return null;
 
     const format = (val: number) => `₹${val.toLocaleString('en-IN')}`;
 
     return (
         <div className="space-y-8 animate-fade-in pb-12">
+            <style>{`
+                @keyframes blink {
+                    0% { opacity: 1; transform: scale(1); }
+                    50% { opacity: 0.5; transform: scale(0.98); }
+                    100% { opacity: 1; transform: scale(1); }
+                }
+                .bhuk-bhak {
+                    animation: blink 1.5s infinite ease-in-out;
+                }
+                .premium-banner {
+                    background: linear-gradient(90deg, #4f46e5, #9333ea, #db2777);
+                    background-size: 200% 200%;
+                    animation: gradientShift 5s ease infinite;
+                }
+                @keyframes gradientShift {
+                    0% { background-position: 0% 50%; }
+                    50% { background-position: 100% 50%; }
+                    100% { background-position: 0% 50%; }
+                }
+            `}</style>
+
+            {/* Trial & Premium Banner */}
+            {timeLeft && (
+                <div className="premium-banner rounded-3xl p-6 text-white shadow-2xl overflow-hidden relative border-4 border-yellow-400 bhuk-bhak">
+                    <div className="absolute -right-10 -top-10 opacity-10 rotate-12">
+                        <RupeeIcon className="w-64 h-64" />
+                    </div>
+                    <div className="flex flex-col md:flex-row justify-between items-center gap-6 relative z-10">
+                        <div className="text-center md:text-left">
+                            <h2 className="text-3xl font-black tracking-tighter uppercase mb-1">🎁 Limited Time Free Trial 🎁</h2>
+                            <p className="text-indigo-100 font-bold text-lg">Your high-security administrative environment is active.</p>
+                            <div className="mt-4 flex flex-wrap justify-center md:justify-start gap-4">
+                                <div className="bg-white/20 px-4 py-2 rounded-xl backdrop-blur-md border border-white/30 text-center min-w-[80px]">
+                                    <span className="block text-2xl font-black">{timeLeft.days}</span>
+                                    <span className="text-[10px] uppercase font-bold tracking-widest">Days</span>
+                                </div>
+                                <div className="bg-white/20 px-4 py-2 rounded-xl backdrop-blur-md border border-white/30 text-center min-w-[80px]">
+                                    <span className="block text-2xl font-black">{timeLeft.hours}</span>
+                                    <span className="text-[10px] uppercase font-bold tracking-widest">Hours</span>
+                                </div>
+                                <div className="bg-white/20 px-4 py-2 rounded-xl backdrop-blur-md border border-white/30 text-center min-w-[80px]">
+                                    <span className="block text-2xl font-black">{timeLeft.min}</span>
+                                    <span className="text-[10px] uppercase font-bold tracking-widest">Mins</span>
+                                </div>
+                                <div className="bg-white/20 px-4 py-2 rounded-xl backdrop-blur-md border border-white/30 text-center min-w-[80px]">
+                                    <span className="block text-2xl font-black text-yellow-300">{timeLeft.sec}</span>
+                                    <span className="text-[10px] uppercase font-bold tracking-widest text-yellow-200">Secs</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="bg-yellow-400 text-slate-900 p-6 rounded-2xl shadow-inner border-2 border-white text-center md:text-right min-w-[280px]">
+                            <p className="text-xs font-black uppercase tracking-tighter opacity-70">Exclusive Activation Offer</p>
+                            <div className="flex items-center justify-center md:justify-end gap-2 my-1">
+                                <span className="text-lg line-through opacity-50 font-bold">₹1299</span>
+                                <span className="text-4xl font-black">₹{currentPremiumPrice}</span>
+                                <span className="text-xs font-bold bg-slate-900 text-white px-2 py-0.5 rounded">/YEAR</span>
+                            </div>
+                            <p className="text-[10px] font-bold text-rose-600 mb-4">*Price increases ₹10 every 24 hours</p>
+                            <div className="bg-slate-900 text-white p-3 rounded-xl">
+                                <p className="text-[10px] font-bold uppercase mb-1 opacity-60">Contact Agent for Activation</p>
+                                <a href="tel:9241981083" className="text-xl font-black hover:text-yellow-400 transition-colors">9241981083</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <div className="flex flex-col md:flex-row justify-between items-end gap-4 border-b border-gray-200 pb-6">
                 <div>
                     <h1 className="text-4xl font-black text-gray-900 tracking-tight">Institutional Dashboard</h1>
