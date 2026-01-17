@@ -40,6 +40,7 @@ import AnalysisSalary from './pages/AnalysisSalary';
 import AnalysisAdmissions from './pages/AnalysisAdmissions';
 import AnalysisResults from './pages/AnalysisResults';
 import StudentDashboard from './pages/StudentDashboard';
+import InstallPWA from './components/InstallPWA'; // Import the PWA button
 
 const App: React.FC = () => {
   const [session, setSession] = useState<Session | null>(null);
@@ -134,74 +135,83 @@ const App: React.FC = () => {
   // 1. Student Session Active
   if (studentSession) {
     return (
-        <Routes>
-            <Route path="/student-dashboard" element={<StudentDashboard student={studentSession} onLogout={() => {
-                localStorage.removeItem('student_session');
-                localStorage.removeItem('student_token'); // Clear persistent token on logout
-                setStudentSession(null);
-                navigate('/');
-            }} />} />
-            <Route path="*" element={<Navigate to="/student-dashboard" replace />} />
-        </Routes>
+        <>
+            <InstallPWA />
+            <Routes>
+                <Route path="/student-dashboard" element={<StudentDashboard student={studentSession} onLogout={() => {
+                    localStorage.removeItem('student_session');
+                    localStorage.removeItem('student_token'); // Clear persistent token on logout
+                    setStudentSession(null);
+                    navigate('/');
+                }} />} />
+                <Route path="*" element={<Navigate to="/student-dashboard" replace />} />
+            </Routes>
+        </>
     );
   }
 
   // 2. No Session (Login Page)
   if (!session) {
     return (
-        <Routes>
-            <Route path="/update-password" element={<UpdatePassword />} />
-            <Route path="*" element={<Login onStudentLogin={(student) => {
-                localStorage.setItem('student_session', JSON.stringify(student));
-                setStudentSession(student);
-                navigate('/student-dashboard');
-            }} />} />
-        </Routes>
+        <>
+            <InstallPWA />
+            <Routes>
+                <Route path="/update-password" element={<UpdatePassword />} />
+                <Route path="*" element={<Login onStudentLogin={(student) => {
+                    localStorage.setItem('student_session', JSON.stringify(student));
+                    setStudentSession(student);
+                    navigate('/student-dashboard');
+                }} />} />
+            </Routes>
+        </>
     );
   }
 
   // 3. Admin Session Active
   return (
-    <Routes>
-      <Route element={<Layout />}>
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
-        <Route path="/dashboard" element={<Dashboard user={session.user} />} />
-        
-        {/* Analysis Hub & Sub-pages */}
-        <Route path="/analysis" element={<Analysis user={session.user} />} />
-        <Route path="/fees-analysis" element={<FeesAnalysis user={session.user} />} />
-        <Route path="/analysis/attendance" element={<AnalysisAttendance />} />
-        <Route path="/analysis/staff" element={<AnalysisStaff />} />
-        <Route path="/analysis/salary" element={<AnalysisSalary />} />
-        <Route path="/analysis/admissions" element={<AnalysisAdmissions />} />
-        <Route path="/analysis/results" element={<AnalysisResults />} />
+    <>
+        <InstallPWA />
+        <Routes>
+          <Route element={<Layout />}>
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/dashboard" element={<Dashboard user={session.user} />} />
+            
+            {/* Analysis Hub & Sub-pages */}
+            <Route path="/analysis" element={<Analysis user={session.user} />} />
+            <Route path="/fees-analysis" element={<FeesAnalysis user={session.user} />} />
+            <Route path="/analysis/attendance" element={<AnalysisAttendance />} />
+            <Route path="/analysis/staff" element={<AnalysisStaff />} />
+            <Route path="/analysis/salary" element={<AnalysisSalary />} />
+            <Route path="/analysis/admissions" element={<AnalysisAdmissions />} />
+            <Route path="/analysis/results" element={<AnalysisResults />} />
 
-        <Route path="/profile" element={<Profile user={session.user} />} />
-        <Route path="/students" element={<Students />} />
-        <Route path="/staff" element={<Staff />} />
-        <Route path="/classes" element={<Classes />} />
-        <Route path="/expenses" element={<Expenses />} />
-        <Route path="/fees-types" element={<FeesTypes />} />
-        <Route path="/dues-list" element={<DuesList />} />
-        <Route path="/attendance" element={<Attendance />} />
-        <Route path="/attendance-report" element={<AttendanceReport />} />
-        <Route path="/staff-attendance" element={<StaffAttendance />} />
-        <Route path="/staff-attendance-report" element={<StaffAttendanceReport />} />
-        <Route path="/results" element={<Results />} />
-        <Route path="/transport" element={<Transport />} />
-        <Route path="/hostel" element={<Hostel />} />
-        <Route path="/query-helper" element={<QueryHelper />} />
-        <Route path="/data-center" element={<DataCenter />} />
-        <Route path="/generator-tools" element={<GeneratorTools />} />
-        <Route path="/how-to-use" element={<HowToUse />} />
-      </Route>
-      
-      <Route path="/update-password" element={<UpdatePassword />} />
+            <Route path="/profile" element={<Profile user={session.user} />} />
+            <Route path="/students" element={<Students />} />
+            <Route path="/staff" element={<Staff />} />
+            <Route path="/classes" element={<Classes />} />
+            <Route path="/expenses" element={<Expenses />} />
+            <Route path="/fees-types" element={<FeesTypes />} />
+            <Route path="/dues-list" element={<DuesList />} />
+            <Route path="/attendance" element={<Attendance />} />
+            <Route path="/attendance-report" element={<AttendanceReport />} />
+            <Route path="/staff-attendance" element={<StaffAttendance />} />
+            <Route path="/staff-attendance-report" element={<StaffAttendanceReport />} />
+            <Route path="/results" element={<Results />} />
+            <Route path="/transport" element={<Transport />} />
+            <Route path="/hostel" element={<Hostel />} />
+            <Route path="/query-helper" element={<QueryHelper />} />
+            <Route path="/data-center" element={<DataCenter />} />
+            <Route path="/generator-tools" element={<GeneratorTools />} />
+            <Route path="/how-to-use" element={<HowToUse />} />
+          </Route>
+          
+          <Route path="/update-password" element={<UpdatePassword />} />
 
-      {externalLinks.map(link => (
-        <Route key={link.path} path={`/${link.path}`} element={<ExternalPage />} />
-      ))}
-    </Routes>
+          {externalLinks.map(link => (
+            <Route key={link.path} path={`/${link.path}`} element={<ExternalPage />} />
+          ))}
+        </Routes>
+    </>
   );
 };
 
