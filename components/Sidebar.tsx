@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../services/supabase';
 import { externalLinks } from '../services/externalLinks';
@@ -24,6 +24,7 @@ import HelpIcon from './icons/HelpIcon';
 import HostelIcon from './icons/HostelIcon';
 import ChartBarIcon from './icons/ChartBarIcon';
 import RupeeIcon from './icons/RupeeIcon';
+import DownloadIcon from './icons/DownloadIcon';
 
 interface SidebarProps {
     isOpen: boolean;
@@ -32,6 +33,34 @@ interface SidebarProps {
 
 const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
     const navigate = useNavigate();
+    const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+
+    useEffect(() => {
+        const handler = (e: any) => {
+            // Prevent the mini-infobar from appearing on mobile
+            e.preventDefault();
+            // Stash the event so it can be triggered later.
+            setDeferredPrompt(e);
+        };
+
+        window.addEventListener('beforeinstallprompt', handler);
+
+        return () => window.removeEventListener('beforeinstallprompt', handler);
+    }, []);
+
+    const handleInstallClick = async () => {
+        if (!deferredPrompt) return;
+        
+        // Show the install prompt
+        deferredPrompt.prompt();
+        
+        // Wait for the user to respond to the prompt
+        const { outcome } = await deferredPrompt.userChoice;
+        
+        if (outcome === 'accepted') {
+            setDeferredPrompt(null);
+        }
+    };
 
     const handleLogout = async () => {
         await supabase.auth.signOut();
@@ -140,6 +169,19 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                         <HelpIcon />
                         <span className="mx-4">How to Use</span>
                     </NavLink>
+
+                    {/* Shortcuts Section for PWA Install */}
+                    {deferredPrompt && (
+                        <div className="pt-4 mt-4 border-t border-gray-700">
+                            <h3 className="px-2 mb-2 text-xs font-semibold tracking-wider text-gray-400 uppercase">
+                                Shortcuts
+                            </h3>
+                            <button onClick={handleInstallClick} className={linkClasses + " w-full text-left"}>
+                                <DownloadIcon />
+                                <span className="mx-4">Download App</span>
+                            </button>
+                        </div>
+                    )}
 
                      <div className="pt-4 mt-4 border-t border-gray-700">
                         <h3 className="px-2 mb-2 text-xs font-semibold tracking-wider text-gray-400 uppercase">
