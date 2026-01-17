@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase } from '../services/supabase';
-import { Student, Staff, Class, Expense, Attendance, ExamResult, SalaryRecord, OwnerProfile } from '../types';
+import { Student, Staff, Class, Expense, Attendance, ExamResult, SalaryRecord } from '../types';
 import Spinner from '../components/Spinner';
 import StatCard from '../components/StatCard';
 import { DonutChart, LineChart, SimpleBarChart } from '../components/ChartComponents';
@@ -41,7 +41,7 @@ interface DashboardData {
     expenseCategory: { label: string; value: number; color: string }[];
     classStrength: { label: string; value: number }[];
     
-    schoolProfile: any; // Using any to handle end_premium and premium_status
+    schoolProfile: any; 
 }
 
 const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -62,7 +62,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
     const [error, setError] = useState<string | null>(null);
     const [trialExpired, setTrialExpired] = useState(false);
     
-    // Timer State
     const [timeLeft, setTimeLeft] = useState<{days: number, hours: number, min: number, sec: number} | null>(null);
     const [currentPremiumPrice, setCurrentPremiumPrice] = useState(999);
 
@@ -102,31 +101,38 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                 const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
                 
                 let shouldUpdateDB = false;
-                let updatedStatus = ownerProfile.premium_status;
+                let updateData: any = {};
 
-                // Case 1: Subscription end_premium exists
+                // Check end_premium (Format: 2026-01-23-12:19)
                 if (ownerProfile.end_premium) {
-                    const expiryDate = new Date(ownerProfile.end_premium);
+                    // Convert custom format YYYY-MM-DD-HH:mm to standard YYYY-MM-DD HH:mm for parsing
+                    const dateParts = ownerProfile.end_premium.split('-');
+                    const formattedExpiryStr = `${dateParts[0]}-${dateParts[1]}-${dateParts[2]} ${dateParts[3]}`;
+                    const expiryDate = new Date(formattedExpiryStr);
+
                     if (now > expiryDate) {
-                        updatedStatus = ""; // Expired
+                        updateData.premium_status = "";
+                        updateData.end_premium = "";
                         shouldUpdateDB = true;
                     }
                 } 
-                // Case 2: 90 Days Trial Logic
+                // Check 90 Days Trial Logic (only if end_premium is not set)
                 else if (diffDays > 90) {
                     setTrialExpired(true);
                     if (ownerProfile.premium_status) {
-                        updatedStatus = ""; // Clear status on trial end
+                        updateData.premium_status = "";
                         shouldUpdateDB = true;
                     }
                 }
 
                 if (shouldUpdateDB) {
-                    await supabase.from('owner').update({ premium_status: updatedStatus }).eq('uid', user.id);
+                    await supabase.from('owner').update(updateData).eq('uid', user.id);
+                    // Refresh profile in local state
+                    ownerProfile.premium_status = updateData.premium_status ?? ownerProfile.premium_status;
+                    ownerProfile.end_premium = updateData.end_premium ?? ownerProfile.end_premium;
                 }
             }
 
-            // Existing Financial Calculations
             const classFeesMap = new Map(classes.map(c => [c.class_name, c.school_fees || 0]));
             let totalRevenue = 0;
             let totalDues = 0;
@@ -234,7 +240,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
 
     useEffect(() => { fetchData(); }, [fetchData]);
 
-    // Countdown and Price Logic
     useEffect(() => {
         if (!data?.schoolProfile?.register_date) return;
 
@@ -309,7 +314,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                 </div>
             )}
 
-            {/* Existing Trial & Premium Banner UI */}
+            {/* Promotion Banner */}
             {timeLeft && (
                 <div className="premium-banner rounded-3xl p-6 text-white shadow-2xl overflow-hidden relative border-4 border-yellow-400 bhuk-bhak">
                     <div className="absolute -right-10 -top-10 opacity-10 rotate-12">
