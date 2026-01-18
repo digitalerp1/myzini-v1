@@ -37,26 +37,17 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
 
     useEffect(() => {
         const handler = (e: any) => {
-            // Prevent the mini-infobar from appearing on mobile
             e.preventDefault();
-            // Stash the event so it can be triggered later.
             setDeferredPrompt(e);
         };
-
         window.addEventListener('beforeinstallprompt', handler);
-
         return () => window.removeEventListener('beforeinstallprompt', handler);
     }, []);
 
     const handleInstallClick = async () => {
         if (!deferredPrompt) return;
-        
-        // Show the install prompt
         deferredPrompt.prompt();
-        
-        // Wait for the user to respond to the prompt
         const { outcome } = await deferredPrompt.userChoice;
-        
         if (outcome === 'accepted') {
             setDeferredPrompt(null);
         }
@@ -68,23 +59,24 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
         navigate('/');
     };
 
-    const linkClasses = "flex items-center px-4 py-3 text-gray-300 hover:bg-gray-700 hover:text-white rounded-md transition-colors duration-200";
-    const activeLinkClasses = "bg-primary text-white";
+    const linkClasses = "flex items-center px-4 py-3 text-gray-300 hover:bg-gray-700 hover:text-white rounded-md transition-colors duration-200 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white";
+    const activeLinkClasses = "bg-primary text-white dark:bg-indigo-600";
 
     const sidebarContainerClasses = `
         bg-dark-nav text-white flex flex-col h-screen flex-shrink-0
         w-64 fixed md:relative md:translate-x-0
         transition-transform duration-300 ease-in-out z-40
         ${isOpen ? 'translate-x-0' : '-translate-x-full'}
+        dark:bg-slate-950
     `;
 
     return (
         <div className={sidebarContainerClasses}>
-            <div className="flex items-center justify-center h-20 border-b border-gray-700 flex-shrink-0 md:h-16">
+            <div className="flex items-center justify-center h-20 border-b border-gray-700 flex-shrink-0 md:h-16 dark:border-slate-800">
                 <h1 className="text-2xl font-bold">My Zini</h1>
             </div>
             <div className="flex-1 flex flex-col overflow-y-hidden">
-                <nav className="flex-grow px-4 py-6 space-y-2 overflow-y-auto">
+                <nav className="flex-grow px-4 py-6 space-y-2 overflow-y-auto custom-scrollbar">
                     <NavLink to="/dashboard" onClick={onClose} className={({ isActive }) => `${linkClasses} ${isActive ? activeLinkClasses : ''}`}>
                         <DashboardIcon />
                         <span className="mx-4">Dashboard</span>
@@ -169,41 +161,24 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                         <HelpIcon />
                         <span className="mx-4">How to Use</span>
                     </NavLink>
+                    
+                    <NavLink to="/settings" onClick={onClose} className={({ isActive }) => `${linkClasses} ${isActive ? activeLinkClasses : ''}`}>
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                        <span className="mx-4">Settings</span>
+                    </NavLink>
 
-                    {/* Shortcuts Section for PWA Install */}
                     {deferredPrompt && (
-                        <div className="pt-4 mt-4 border-t border-gray-700">
-                            <h3 className="px-2 mb-2 text-xs font-semibold tracking-wider text-gray-400 uppercase">
-                                Shortcuts
-                            </h3>
+                        <div className="pt-4 mt-4 border-t border-gray-700 dark:border-slate-800">
+                            <h3 className="px-2 mb-2 text-xs font-semibold tracking-wider text-gray-400 uppercase">Shortcuts</h3>
                             <button onClick={handleInstallClick} className={linkClasses + " w-full text-left"}>
                                 <DownloadIcon />
                                 <span className="mx-4">Download App</span>
                             </button>
                         </div>
                     )}
-
-                     <div className="pt-4 mt-4 border-t border-gray-700">
-                        <h3 className="px-2 mb-2 text-xs font-semibold tracking-wider text-gray-400 uppercase">
-                            Quick Links
-                        </h3>
-                        <div className="space-y-2">
-                            {externalLinks.map(link => (
-                                <Link
-                                    key={link.path}
-                                    to={`/${link.path}`}
-                                    onClick={onClose}
-                                    className={linkClasses}
-                                >
-                                    <ExternalLinkIcon />
-                                    <span className="mx-4">{link.name}</span>
-                                </Link>
-                            ))}
-                        </div>
-                    </div>
                 </nav>
             </div>
-            <div className="px-4 py-6 border-t border-gray-700 flex-shrink-0">
+            <div className="px-4 py-6 border-t border-gray-700 flex-shrink-0 dark:border-slate-800">
                 <button onClick={handleLogout} className={linkClasses + " w-full"}>
                     <LogoutIcon />
                     <span className="mx-4">Logout</span>

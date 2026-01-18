@@ -32,6 +32,7 @@ import UpdatePassword from './pages/UpdatePassword';
 import Analysis from './pages/Analysis';
 import FeesAnalysis from './pages/FeesAnalysis';
 import DataCenter from './pages/DataCenter';
+import Settings from './pages/Settings';
 
 // Individual Analysis Pages
 import AnalysisAttendance from './pages/AnalysisAttendance';
@@ -51,18 +52,43 @@ const App: React.FC = () => {
   const isConfirmationFlow = useMemo(() => window.location.hash.includes('type=signup'), []);
 
   useEffect(() => {
+    // 1. Application Logic for Display Modes
+    const applyDisplaySettings = () => {
+      // Force Desktop Mode Logic
+      const desktopMode = localStorage.getItem('force_desktop_mode') === 'true';
+      let viewport = document.querySelector('meta[name="viewport"]');
+      if (desktopMode) {
+        if (viewport) {
+          viewport.setAttribute('content', 'width=1280, initial-scale=0.3, maximum-scale=5.0, user-scalable=yes');
+        }
+      } else {
+        if (viewport) {
+          viewport.setAttribute('content', 'width=device-width, initial-scale=1.0');
+        }
+      }
+
+      // Dark Mode Logic
+      const darkMode = localStorage.getItem('theme_mode') === 'dark';
+      if (darkMode) {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+    };
+
+    applyDisplaySettings();
+    
+    // Watch for local storage changes from Settings page
+    window.addEventListener('storage', applyDisplaySettings);
+
     if (isConfirmationFlow) {
       setLoading(false);
       return;
     }
 
     const checkSessions = async () => {
-      // 1. Check for Admin Session
       const { data: { session } } = await supabase.auth.getSession();
-      
-      // 2. Check for Student Session in LocalStorage
       const storedStudent = localStorage.getItem('student_session');
-      // 3. Check for Persistent Login Token
       const storedToken = localStorage.getItem('student_token');
       
       if (session) {
@@ -70,14 +96,12 @@ const App: React.FC = () => {
       } else if (storedStudent) {
         setStudentSession(JSON.parse(storedStudent));
       } else if (storedToken) {
-          // Attempt auto-login with token
           try {
               const { data, error } = await supabase.rpc('student_login_by_token', { token_input: storedToken });
               if (data && Array.isArray(data) && data.length > 0) {
                    setStudentSession(data);
                    localStorage.setItem('student_session', JSON.stringify(data));
               } else {
-                   // Invalid token, clear it
                    localStorage.removeItem('student_token');
               }
           } catch (e) {
@@ -93,21 +117,14 @@ const App: React.FC = () => {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session);
-      
-      if (event === 'PASSWORD_RECOVERY') {
-        navigate('/update-password');
-      }
-
+      if (event === 'PASSWORD_RECOVERY') navigate('/update-password');
       if (session && window.location.hash && window.location.hash.includes('access_token')) {
           window.history.replaceState(null, '', window.location.pathname);
       }
-
       if (event === 'SIGNED_OUT') {
          setSession(null);
          setStudentSession(null);
          localStorage.removeItem('student_session');
-         // We do not remove 'student_token' on explicit sign out unless the user wants to clear the device
-         // But for security, usually logout means clearing everything.
          localStorage.removeItem('student_token');
          navigate('/');
       }
@@ -115,24 +132,20 @@ const App: React.FC = () => {
 
     return () => {
       subscription?.unsubscribe();
+      window.removeEventListener('storage', applyDisplaySettings);
     };
   }, [navigate, isConfirmationFlow]);
 
-  if (isConfirmationFlow) {
-    return <EmailConfirmationPage />;
-  }
+  if (isConfirmationFlow) return <EmailConfirmationPage />;
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen bg-light-bg">
+      <div className="flex items-center justify-center h-screen bg-light-bg dark:bg-slate-900">
         <Spinner />
       </div>
     );
   }
 
-  // Route Handling based on Session Type
-
-  // 1. Student Session Active
   if (studentSession) {
     return (
         <>
@@ -140,7 +153,7 @@ const App: React.FC = () => {
             <Routes>
                 <Route path="/student-dashboard" element={<StudentDashboard student={studentSession} onLogout={() => {
                     localStorage.removeItem('student_session');
-                    localStorage.removeItem('student_token'); // Clear persistent token on logout
+                    localStorage.removeItem('student_token'); 
                     setStudentSession(null);
                     navigate('/');
                 }} />} />
@@ -150,7 +163,6 @@ const App: React.FC = () => {
     );
   }
 
-  // 2. No Session (Login Page)
   if (!session) {
     return (
         <>
@@ -167,7 +179,6 @@ const App: React.FC = () => {
     );
   }
 
-  // 3. Admin Session Active
   return (
     <>
         <InstallPWA />
@@ -175,8 +186,6 @@ const App: React.FC = () => {
           <Route element={<Layout />}>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<Dashboard user={session.user} />} />
-            
-            {/* Analysis Hub & Sub-pages */}
             <Route path="/analysis" element={<Analysis user={session.user} />} />
             <Route path="/fees-analysis" element={<FeesAnalysis user={session.user} />} />
             <Route path="/analysis/attendance" element={<AnalysisAttendance />} />
@@ -184,7 +193,6 @@ const App: React.FC = () => {
             <Route path="/analysis/salary" element={<AnalysisSalary />} />
             <Route path="/analysis/admissions" element={<AnalysisAdmissions />} />
             <Route path="/analysis/results" element={<AnalysisResults />} />
-
             <Route path="/profile" element={<Profile user={session.user} />} />
             <Route path="/students" element={<Students />} />
             <Route path="/staff" element={<Staff />} />
@@ -203,10 +211,9 @@ const App: React.FC = () => {
             <Route path="/data-center" element={<DataCenter />} />
             <Route path="/generator-tools" element={<GeneratorTools />} />
             <Route path="/how-to-use" element={<HowToUse />} />
+            <Route path="/settings" element={<Settings user={session.user} />} />
           </Route>
-          
           <Route path="/update-password" element={<UpdatePassword />} />
-
           {externalLinks.map(link => (
             <Route key={link.path} path={`/${link.path}`} element={<ExternalPage />} />
           ))}
