@@ -11,88 +11,246 @@ import ViewIcon from '../components/icons/ViewIcon';
 import DownloadIcon from '../components/icons/DownloadIcon';
 import PlusIcon from '../components/icons/PlusIcon';
 
+
+
+
 const Students: React.FC = () => {
     const [students, setStudents] = useState<StudentType[]>([]);
     const [classes, setClasses] = useState<Class[]>([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
     const [selectedStudent, setSelectedStudent] = useState<StudentType | null>(null);
+    const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+    const [isDownloading, setIsDownloading] = useState(false);
+
     const [searchTerm, setSearchTerm] = useState('');
     const [filterClass, setFilterClass] = useState('');
 
     const fetchData = useCallback(async () => {
         setLoading(true);
-        const { data: classesData } = await supabase.from('classes').select('*').order('class_name');
-        if (classesData) setClasses(classesData);
 
-        let query = supabase.from('students').select('*');
-        if (filterClass) query = query.eq('class', filterClass);
-        if (searchTerm) query = query.ilike('name', `%${searchTerm}%`);
+        // Fetch classes for the filter dropdown first, if not already fetched
+        if (classes.length === 0) {
+            const { data: classesData, error: classesError } = await supabase
+                .from('classes')
+                .select('*')
+                .order('class_name', { ascending: true });
+            
+            if (classesError) {
+                setError(classesError.message);
+                setLoading(false);
+                return;
+            }
+            setClasses(classesData as Class[]);
+        }
 
-        const { data: studentsData } = await query;
-        if (studentsData) {
-            // Natural sort by Roll Number
-            const sorted = (studentsData as StudentType[]).sort((a, b) => {
-                return (a.roll_number || '').localeCompare(b.roll_number || '', undefined, { numeric: true, sensitivity: 'base' });
-            });
-            setStudents(sorted);
+        // Fetch students with filters
+        let query = supabase
+            .from('students')
+            .select('*')
+            .order('roll_number', { ascending: true, nullsFirst: false });
+
+        if (filterClass) {
+            query = query.eq('class', filterClass);
+        }
+        if (searchTerm) {
+            query = query.ilike('name', `%${searchTerm}%`);
+        }
+
+        const { data: studentsData, error: studentsError } = await query;
+        if (studentsError) {
+            setError(studentsError.message);
+        } else {
+            setStudents(studentsData as StudentType[]);
         }
         setLoading(false);
-    }, [filterClass, searchTerm]);
 
-    useEffect(() => { fetchData(); }, [fetchData]);
+    }, [filterClass, searchTerm, classes.length]);
+
+    useEffect(() => {
+        fetchData();
+
+        const channel = supabase.channel('public:students')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'students' }, () => fetchData())
+            .subscribe();
+        
+        const classesChannel = supabase.channel('public:classes')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'classes' }, () => fetchData())
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+            supabase.removeChannel(classesChannel);
+        };
+    }, [fetchData]);
+    
+    const showMessage = (type: 'success' | 'error', text: string) => {
+        setMessage({ type, text });
+        setTimeout(() => setMessage(null), 5000);
+    };
+
+    const handleDownloadData = async () => {
+        setIsDownloading(true);
+        showMessage('success', 'Starting download... This may take a moment for large datasets.');
+
+        // Fetch ALL students, ignoring filters
+        const { data, error } = await supabase
+            .from('students')
+            .select('*')
+            .order('name', { ascending: true });
+
+        if (error) {
+            showMessage('error', `Failed to fetch data for download: ${error.message}`);
+            setIsDownloading(false);
+            return;
+        }
+
+        const jsonData = JSON.stringify(data, null, 2);
+        const blob = new Blob([jsonData], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'students_data.json';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        setIsDownloading(false);
+    };
+
+
+    const handleAdd = () => {
+        setSelectedStudent(null);
+        setIsModalOpen(true);
+    };
+
+    const handleEdit = (student: StudentType) => {
+        setSelectedStudent(student);
+        setIsModalOpen(true);
+    };
+    
+    const handleViewProfile = (student: StudentType) => {
+        setSelectedStudent(student);
+        setIsProfileModalOpen(true);
+    };
+
+    const handleDelete = async (student: StudentType) => {
+        if (window.confirm(`Are you sure you want to delete the record for ${student.name}? This will also remove their exam results.`)) {
+            // First, delete related exam results
+            if (student.class && student.roll_number) {
+                const { error: resultsError } = await supabase
+                    .from('exam_results')
+                    .delete()
+                    .eq('class', student.class)
+                    .eq('roll_number', student.roll_number);
+
+                if (resultsError) {
+                    showMessage('error', `Could not delete associated exam results: ${resultsError.message}`);
+                    return; // Stop if we can't delete related records
+                }
+            }
+            
+            // Then, delete the student record
+            const { error } = await supabase.from('students').delete().eq('id', student.id);
+            if (error) {
+                showMessage('error', `Error deleting student: ${error.message}`);
+            } else {
+                showMessage('success', 'Student record and their results deleted successfully.');
+            }
+        }
+    };
 
     const closeModal = () => {
         setIsModalOpen(false);
         setIsProfileModalOpen(false);
         setSelectedStudent(null);
-        fetchData();
     };
 
     return (
         <div className="bg-white p-8 rounded-xl shadow-lg">
             <div className="flex justify-between items-center mb-6">
-                <h1 className="text-3xl font-bold text-gray-800">Student Directory</h1>
-                <button onClick={() => setIsModalOpen(true)} className="px-5 py-2.5 bg-primary text-white font-semibold rounded-md flex items-center gap-2"><PlusIcon /> Admission</button>
+                <h1 className="text-3xl font-bold text-gray-800">Student Management</h1>
+                <div className="flex items-center gap-4">
+                    <button
+                        onClick={handleDownloadData}
+                        disabled={isDownloading}
+                        className="px-5 py-2.5 bg-secondary text-white font-semibold rounded-md hover:bg-green-600 transition-colors flex items-center gap-2 disabled:bg-gray-400"
+                    >
+                        {isDownloading ? <Spinner size="5" /> : <DownloadIcon />}
+                        {isDownloading ? 'Downloading...' : 'Download Data (JSON)'}
+                    </button>
+                    <button
+                        onClick={handleAdd}
+                        className="px-5 py-2.5 bg-primary text-white font-semibold rounded-md hover:bg-primary-dark transition-colors flex items-center gap-2"
+                    >
+                        <PlusIcon />
+                        Add New Student
+                    </button>
+                </div>
             </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                <input type="search" placeholder="Search name or roll..." value={searchTerm} onChange={e=>setSearchTerm(e.target.value)} className="md:col-span-2 px-3 py-2 border rounded-md"/>
-                <select value={filterClass} onChange={e=>setFilterClass(e.target.value)} className="px-3 py-2 border rounded-md">
+             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <input
+                    type="search"
+                    placeholder="Search by student name..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="md:col-span-2 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm"
+                />
+                <select
+                    value={filterClass}
+                    onChange={(e) => setFilterClass(e.target.value)}
+                    className="block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-primary focus:border-primary sm:text-sm"
+                >
                     <option value="">All Classes</option>
-                    {classes.map(c => <option key={c.id} value={c.class_name}>{c.class_name}</option>)}
+                    {classes.map((c) => (
+                        <option key={c.id} value={c.class_name}>{c.class_name}</option>
+                    ))}
                 </select>
             </div>
 
-            {loading ? <div className="flex justify-center py-20"><Spinner size="12" /></div> : (
+            {message && (
+                <div className={`p-4 mb-4 text-sm rounded-md ${message.type === 'error' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+                    {message.text}
+                </div>
+            )}
+
+            {loading ? (
+                <div className="flex justify-center items-center h-96"><Spinner size="12" /></div>
+            ) : error ? (
+                <div className="text-center text-red-500">{error}</div>
+            ) : students.length === 0 ? (
+                <div className="text-center text-gray-500 h-96 flex flex-col justify-center items-center">
+                    <svg className="w-16 h-16 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
+                    <h2 className="mt-4 text-xl font-semibold">No Students Found</h2>
+                    <p className="mt-2">No students match your current search/filter criteria.</p>
+                </div>
+            ) : (
                 <div className="overflow-x-auto">
-                    <table className="min-w-full">
-                        <thead className="bg-gray-50 text-xs font-bold text-gray-500 uppercase">
+                    <table className="min-w-full bg-white border border-gray-200">
+                        <thead className="bg-gray-50">
                             <tr>
-                                <th className="py-3 px-4 text-left">Roll</th>
-                                <th className="py-3 px-4 text-left">Student</th>
-                                <th className="py-3 px-4 text-left">Class</th>
-                                <th className="py-3 px-4 text-left">Disc.</th>
-                                <th className="py-3 px-4 text-center">Actions</th>
+                                <th className="py-3 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                                <th className="py-3 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Class</th>
+                                <th className="py-3 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Roll No.</th>
+                                <th className="py-3 px-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Mobile</th>
+                                <th className="py-3 px-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y text-sm">
-                            {students.map(s => (
-                                <tr key={s.id} className="hover:bg-gray-50 transition-colors">
-                                    <td className="py-4 px-4 font-mono font-bold text-primary">{s.roll_number || '-'}</td>
-                                    <td className="py-4 px-4">
-                                        <div className="flex items-center gap-3">
-                                            <img src={s.photo_url || `https://ui-avatars.com/api/?name=${s.name}`} className="w-8 h-8 rounded-full object-cover border"/>
-                                            <span className="font-bold text-gray-900">{s.name}</span>
-                                        </div>
-                                    </td>
-                                    <td className="py-4 px-4 text-gray-500">{s.class}</td>
-                                    <td className="py-4 px-4"><span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded font-black">{s.discount || 0}%</span></td>
-                                    <td className="py-4 px-4 text-center">
-                                        <div className="flex justify-center gap-3">
-                                            <button onClick={()=>{setSelectedStudent(s); setIsProfileModalOpen(true);}} className="text-blue-600"><ViewIcon/></button>
-                                            <button onClick={()=>{setSelectedStudent(s); setIsModalOpen(true);}} className="text-indigo-600"><EditIcon/></button>
+                        <tbody className="divide-y divide-gray-200">
+                            {students.map((student) => (
+                                <tr key={student.id}>
+                                    <td className="py-4 px-4 whitespace-nowrap text-sm font-medium text-gray-900">{student.name}</td>
+                                    <td className="py-4 px-4 whitespace-nowrap text-sm text-gray-500">{student.class || 'N/A'}</td>
+                                    <td className="py-4 px-4 whitespace-nowrap text-sm text-gray-500">{student.roll_number || 'N/A'}</td>
+                                    <td className="py-4 px-4 whitespace-nowrap text-sm text-gray-500">{student.mobile || 'N/A'}</td>
+                                    <td className="py-4 px-4 whitespace-nowrap text-sm font-medium text-center">
+                                        <div className="flex justify-center items-center space-x-2">
+                                            <button onClick={() => handleViewProfile(student)} className="text-blue-600 hover:text-blue-900 transition-colors" title="View Profile"><ViewIcon /></button>
+                                            <button onClick={() => handleEdit(student)} className="text-indigo-600 hover:text-indigo-900 transition-colors" title="Edit"><EditIcon /></button>
+                                            <button onClick={() => handleDelete(student)} className="text-red-600 hover:text-red-900 transition-colors" title="Delete"><DeleteIcon /></button>
                                         </div>
                                     </td>
                                 </tr>
@@ -102,8 +260,25 @@ const Students: React.FC = () => {
                 </div>
             )}
 
-            {isModalOpen && <StudentModal student={selectedStudent} classes={classes} onClose={closeModal} onSave={closeModal} />}
-            {isProfileModalOpen && selectedStudent && <StudentProfileModal student={selectedStudent} classes={classes} onClose={closeModal} />}
+            {isModalOpen && (
+                <StudentModal 
+                    student={selectedStudent}
+                    classes={classes}
+                    onClose={closeModal}
+                    onSave={() => {
+                        showMessage('success', `Student ${selectedStudent ? 'updated' : 'added'} successfully.`);
+                        closeModal();
+                    }}
+                />
+            )}
+
+            {isProfileModalOpen && selectedStudent && (
+                 <StudentProfileModal 
+                    student={selectedStudent}
+                    classes={classes}
+                    onClose={closeModal}
+                 />
+            )}
         </div>
     );
 };
