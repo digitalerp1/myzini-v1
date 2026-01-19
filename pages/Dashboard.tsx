@@ -1,8 +1,7 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase } from '../services/supabase';
-import { Student, Staff, Class, Expense, Attendance, ExamResult, SalaryRecord } from '../types';
+import { Student, Staff, Class, Expense, Attendance, SalaryRecord } from '../types';
 import Spinner from '../components/Spinner';
 import StatCard from '../components/StatCard';
 import { DonutChart, LineChart, SimpleBarChart } from '../components/ChartComponents';
@@ -103,9 +102,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                 let shouldUpdateDB = false;
                 let updateData: any = {};
 
-                // Check end_premium (Format: 2026-01-23-12:19)
                 if (ownerProfile.end_premium) {
-                    // Convert custom format YYYY-MM-DD-HH:mm to standard YYYY-MM-DD HH:mm for parsing
                     const dateParts = ownerProfile.end_premium.split('-');
                     const formattedExpiryStr = `${dateParts[0]}-${dateParts[1]}-${dateParts[2]} ${dateParts[3]}`;
                     const expiryDate = new Date(formattedExpiryStr);
@@ -116,7 +113,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                         shouldUpdateDB = true;
                     }
                 } 
-                // Check 90 Days Trial Logic (only if end_premium is not set)
                 else if (diffDays > 90) {
                     setTrialExpired(true);
                     if (ownerProfile.premium_status) {
@@ -127,7 +123,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
 
                 if (shouldUpdateDB) {
                     await supabase.from('owner').update(updateData).eq('uid', user.id);
-                    // Refresh profile in local state
                     ownerProfile.premium_status = updateData.premium_status ?? ownerProfile.premium_status;
                     ownerProfile.end_premium = updateData.end_premium ?? ownerProfile.end_premium;
                 }
@@ -156,8 +151,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                 const c = s.caste || 'General';
                 casteMap.set(c, (casteMap.get(c) || 0) + 1);
 
-                totalDues += (s.previous_dues || 0);
-                if ((s.previous_dues || 0) > 0) studentHasDues = true;
+                const studentArrears = (s.previous_dues || 0) as number;
+                totalDues += studentArrears;
+                if (studentArrears > 0) studentHasDues = true;
 
                 monthKeys.forEach((key, idx) => {
                     const status = s[key] as string;
@@ -280,27 +276,12 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
     return (
         <div className="space-y-8 animate-fade-in pb-12">
             <style>{`
-                @keyframes blink {
-                    0% { opacity: 1; transform: scale(1); }
-                    50% { opacity: 0.5; transform: scale(0.98); }
-                    100% { opacity: 1; transform: scale(1); }
-                }
-                .bhuk-bhak {
-                    animation: blink 1.5s infinite ease-in-out;
-                }
-                .premium-banner {
-                    background: linear-gradient(90deg, #4f46e5, #9333ea, #db2777);
-                    background-size: 200% 200%;
-                    animation: gradientShift 5s ease infinite;
-                }
-                @keyframes gradientShift {
-                    0% { background-position: 0% 50%; }
-                    50% { background-position: 100% 50%; }
-                    100% { background-position: 0% 50%; }
-                }
+                @keyframes blink { 0% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(0.98); } 100% { opacity: 1; transform: scale(1); } }
+                .bhuk-bhak { animation: blink 1.5s infinite ease-in-out; }
+                .premium-banner { background: linear-gradient(90deg, #4f46e5, #9333ea, #db2777); background-size: 200% 200%; animation: gradientShift 5s ease infinite; }
+                @keyframes gradientShift { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
             `}</style>
 
-            {/* Trial Expiry Alert */}
             {trialExpired && !data.schoolProfile?.premium_status && (
                 <div className="bg-rose-600 text-white p-4 rounded-xl shadow-lg flex items-center justify-between mb-4 border-2 border-white animate-pulse">
                     <div className="flex items-center gap-3">
@@ -314,7 +295,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                 </div>
             )}
 
-            {/* Promotion Banner */}
             {timeLeft && (
                 <div className="premium-banner rounded-3xl p-6 text-white shadow-2xl overflow-hidden relative border-4 border-yellow-400 bhuk-bhak">
                     <div className="absolute -right-10 -top-10 opacity-10 rotate-12">
