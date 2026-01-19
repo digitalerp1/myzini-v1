@@ -9,7 +9,8 @@ export interface OwnerProfile {
   address?: string;
   website?: string;
   school_code?: string;
-  hostel_managment?: HostelBuilding[];
+  // Infrastructure fields
+  hostel_managment?: HostelBuilding[]; // JSON structure for Buildings -> Floors -> Rooms
   owner_name?: string;
 }
 
@@ -22,18 +23,25 @@ export interface HostelBuilding {
 export interface HostelFloor {
   id: string;
   name: string;
-  rooms: string[];
+  rooms: string[]; // Array of room numbers/names
+}
+
+export interface HostelPaymentHistory {
+    date: string;
+    amount: number;
+    mode?: string; // Cash, Online, etc.
+    note?: string;
 }
 
 export interface HostelFeeRecord {
-    id: string;
+    id: string; // Unique ID for the transaction
     month: string;
-    amount: number;
-    paid_amount: number;
+    amount: number; // Total amount due
+    paid_amount: number; // Total amount paid so far
     status: 'Paid' | 'Due' | 'Partial';
-    paid_date?: string;
-    description?: string;
-    payment_history?: { date: string; amount: number }[];
+    paid_date?: string; // Date of last payment or full payment
+    description?: string; // Notes like "Late fine" or "Advance"
+    payment_history?: HostelPaymentHistory[]; // Array to track partial payments
 }
 
 export interface StudentHostelData {
@@ -93,6 +101,23 @@ export interface Class {
   school_fees?: number;
 }
 
+export interface Assignment {
+  id: number;
+  uid: string;
+  class_id: number;
+  subject_id: number;
+  staff_id?: string;
+  incoming_time?: string;
+  outgoing_time?: string;
+}
+
+export interface OtherFee {
+  fees_name: string;
+  amount: number;
+  dues_date: string;
+  paid_date?: string;
+}
+
 export interface Student {
   id: number;
   uid: string;
@@ -113,8 +138,8 @@ export interface Student {
   caste?: string;
   blood_group?: string;
   previous_school_name?: string;
-  discount?: number; // Percentage discount
-  other_fees?: { fees_name: string; amount: number; dues_date: string; paid_date?: string }[];
+  other_fees?: OtherFee[];
+  // Monthly fee tracking
   january?: string;
   february?: string;
   march?: string;
@@ -128,8 +153,14 @@ export interface Student {
   november?: string;
   december?: string;
   previous_dues?: number;
+  
+  // Infrastructure fields (Assigned Room)
+  building_name?: string;
+  floor_name?: string;
+  room_no?: string;
+  
+  // New comprehensive hostel data
   hostel_data?: StudentHostelData;
-  session_token?: string;
 }
 
 export interface Expense {
@@ -145,9 +176,17 @@ export interface Attendance {
   id?: number;
   uid: string;
   class_id: number;
-  date: string;
-  present?: string;
-  absent?: string;
+  date: string; // 'YYYY-MM-DD'
+  present?: string; // Comma-separated roll numbers
+  absent?: string;  // Comma-separated roll numbers
+}
+
+export interface StaffAttendance {
+  id?: number;
+  uid: string;
+  staff_id?: string; // Comma-separated staff IDs
+  date: string; // 'YYYY-MM-DD'
+  created_at?: string;
 }
 
 export interface FeeType {
@@ -158,6 +197,13 @@ export interface FeeType {
   frequency: string;
 }
 
+export interface SubjectMarks {
+  subject_name: string;
+  total_marks: number | string;
+  pass_marks: number | string;
+  obtained_marks: number | string;
+}
+
 export interface ExamResult {
   id: number;
   uid: string;
@@ -165,18 +211,23 @@ export interface ExamResult {
   class: string;
   roll_number: string;
   subjects_marks: {
-    subjects: { subject_name: string; total_marks: number; pass_marks: number; obtained_marks: number }[];
+    subjects: SubjectMarks[];
   };
   created_at: string;
 }
 
 export interface Driver {
   id: number;
+  created_at: string;
   uid: string;
   driver_id: string;
   name: string;
   mobile: string;
-  van_number: string;
+  aadhar?: string;
   photo_url?: string;
+  address?: string;
+  van_number: string;
+  van_image_url?: string;
+  driving_licence?: string;
   students_list?: { class: string; roll_number: string; name: string }[];
 }
