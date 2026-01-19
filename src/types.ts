@@ -9,6 +9,44 @@ export interface OwnerProfile {
   address?: string;
   website?: string;
   school_code?: string;
+  hostel_managment?: HostelBuilding[];
+  owner_name?: string;
+}
+
+export interface HostelBuilding {
+  id: string;
+  name: string;
+  floors: HostelFloor[];
+}
+
+export interface HostelFloor {
+  id: string;
+  name: string;
+  rooms: string[];
+}
+
+export interface HostelFeeRecord {
+    id: string;
+    month: string;
+    amount: number;
+    paid_amount: number;
+    status: 'Paid' | 'Due' | 'Partial';
+    paid_date?: string;
+    description?: string;
+    payment_history?: { date: string; amount: number }[];
+}
+
+export interface StudentHostelData {
+    is_active: boolean;
+    building_id: string;
+    building_name: string;
+    floor_id: string;
+    floor_name: string;
+    room_no: string;
+    joining_date: string;
+    exit_date?: string;
+    monthly_fee: number;
+    fee_records: HostelFeeRecord[];
 }
 
 export interface Staff {
@@ -55,6 +93,7 @@ export interface Class {
   school_fees?: number;
 }
 
+/* FIX: Added missing Assignment interface */
 export interface Assignment {
   id: number;
   uid: string;
@@ -65,6 +104,7 @@ export interface Assignment {
   outgoing_time?: string;
 }
 
+/* FIX: Added missing OtherFee interface */
 export interface OtherFee {
   fees_name: string;
   amount: number;
@@ -92,14 +132,8 @@ export interface Student {
   caste?: string;
   blood_group?: string;
   previous_school_name?: string;
+  discount?: number; // Percentage discount
   other_fees?: OtherFee[];
-  // Monthly fee tracking can have the following string values:
-  // - 'undefined' or null: Not yet billed.
-  // - 'Dues': Billed but completely unpaid.
-  // - An ISO date string (legacy): Represents a full payment made before the partial payment system.
-  // - A payment string: Represents one or more partial payments.
-  //   - Single payment: "AMOUNT=d=ISODATE" (e.g., "250=d=2024-07-15T10:30:00.000Z")
-  //   - Multiple payments are separated by semicolons: "250=d=DATE1;150=d=DATE2"
   january?: string;
   february?: string;
   march?: string;
@@ -113,6 +147,11 @@ export interface Student {
   november?: string;
   december?: string;
   previous_dues?: number;
+  hostel_data?: StudentHostelData;
+  session_token?: string;
+  building_name?: string;
+  floor_name?: string;
+  room_no?: string;
 }
 
 export interface Expense {
@@ -128,16 +167,17 @@ export interface Attendance {
   id?: number;
   uid: string;
   class_id: number;
-  date: string; // 'YYYY-MM-DD'
-  present?: string; // Comma-separated roll numbers
-  absent?: string;  // Comma-separated roll numbers
+  date: string;
+  present?: string;
+  absent?: string;
 }
 
+/* FIX: Added missing StaffAttendance interface */
 export interface StaffAttendance {
   id?: number;
   uid: string;
-  staff_id?: string; // Comma-separated staff IDs
-  date: string; // 'YYYY-MM-DD'
+  staff_id?: string;
+  date: string;
   created_at?: string;
 }
 
@@ -149,6 +189,7 @@ export interface FeeType {
   frequency: string;
 }
 
+/* FIX: Added missing SubjectMarks interface */
 export interface SubjectMarks {
   subject_name: string;
   total_marks: number | string;
@@ -170,16 +211,15 @@ export interface ExamResult {
 
 export interface Driver {
   id: number;
-  created_at: string;
   uid: string;
   driver_id: string;
   name: string;
   mobile: string;
   aadhar?: string;
-  photo_url?: string;
   address?: string;
   van_number: string;
   van_image_url?: string;
   driving_licence?: string;
+  photo_url?: string;
   students_list?: { class: string; roll_number: string; name: string }[];
 }

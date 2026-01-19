@@ -59,16 +59,18 @@ const FeesAnalysis: React.FC<FeesAnalysisProps> = ({ user }) => {
 
         allStudents.forEach(s => {
             const className = s.class || 'Unassigned';
-            const monthlyFee = classFeesMap.get(className) || 0;
+            const monthlyFee = Number(classFeesMap.get(className) || 0);
             
             // 1. Previous Dues (Always count as due)
-            const prevDues = (s.previous_dues || 0) as number;
+            /* FIX: Cast s.previous_dues to number to avoid arithmetic errors. */
+            const prevDues = Number(s.previous_dues || 0);
             totalDues += prevDues;
             classDuesVolume[className] = (Number(classDuesVolume[className]) || 0) + prevDues;
 
             // 2. Monthly Logic
             monthKeys.forEach((key) => {
-                const status = s[key] as string;
+                /* FIX: Cast student field to string | undefined for safe processing. */
+                const status = s[key] as string | undefined;
                 
                 // Ignore undefined/not billed
                 if (!status || status === 'undefined') return;
@@ -119,13 +121,14 @@ const FeesAnalysis: React.FC<FeesAnalysisProps> = ({ user }) => {
 
     const drillDownStudents = useMemo(() => {
         if (!selectedDrillClass) return [];
-        const classFee = classes.find(c => c.class_name === selectedDrillClass)?.school_fees || 0;
+        const classFee = Number(classes.find(c => c.class_name === selectedDrillClass)?.school_fees || 0);
 
         return allStudents.filter(s => s.class === selectedDrillClass).map(s => {
-            let studentDue = (s.previous_dues || 0);
+            /* FIX: Ensured student due is initialized as number. */
+            let studentDue = Number(s.previous_dues || 0);
             
             monthKeys.forEach((key) => {
-                const status = s[key] as string;
+                const status = s[key] as string | undefined;
                 
                 if (!status || status === 'undefined') return;
 

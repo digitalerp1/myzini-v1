@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../services/supabase';
 import Spinner from '../components/Spinner';
@@ -58,7 +59,7 @@ const AnalysisAttendance: React.FC = () => {
                     }
                 });
 
-                // FIX: Added type assertion to ensure 'date' is treated as string for Date constructor
+                /* FIX: Cast date explicitly to string as Date constructor doesn't accept unknown. */
                 const trendData = Array.from(last7DaysMap.entries()).map(([date, val]) => ({
                     label: new Date(date as string).toLocaleDateString('en-US', { day: 'numeric', month: 'short' }),
                     value: val

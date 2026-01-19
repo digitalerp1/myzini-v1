@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../services/supabase';
 import { Staff, StaffAttendance } from '../types';
@@ -95,7 +96,8 @@ const StaffAttendanceReport: React.FC = () => {
                 <div className="border-b pb-4 mb-4">
                     <h2 className="text-2xl font-bold text-gray-800">Staff Attendance Details</h2>
                     <p className="text-gray-600">
-                        <span className="font-semibold">Date:</span> {new Date(selectedRecord.date).toLocaleDateString()}
+                        {/* FIX: Cast selectedRecord.date as string to satisfy Date constructor. */}
+                        <span className="font-semibold">Date:</span> {new Date(selectedRecord.date as string).toLocaleDateString()}
                     </p>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -163,7 +165,8 @@ const StaffAttendanceReport: React.FC = () => {
                     <tbody className="divide-y divide-gray-200">
                         {filteredRecords.length > 0 ? filteredRecords.map(record => (
                             <tr key={record.id}>
-                                <td className="td font-semibold">{new Date(record.date).toLocaleDateString()}</td>
+                                {/* FIX: Cast record.date as string for Date constructor. */}
+                                <td className="td font-semibold">{new Date(record.date as string).toLocaleDateString()}</td>
                                 <td className="td text-green-600">{record.presentStaff.length}</td>
                                 <td className="td text-red-600">{record.absentStaff.length}</td>
                                 <td className="td text-center">
