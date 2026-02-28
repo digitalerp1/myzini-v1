@@ -1,428 +1,542 @@
-
-import React, { useState, useEffect, useCallback } from 'react';
-import { User } from '@supabase/supabase-js';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '../services/supabase';
-import { Student, Staff, Class, Expense, Attendance, ExamResult, SalaryRecord } from '../types';
-import Spinner from '../components/Spinner';
-import StatCard from '../components/StatCard';
-import { DonutChart, LineChart, SimpleBarChart } from '../components/ChartComponents';
-import StudentsIcon from '../components/icons/StudentsIcon';
-import StaffIcon from '../components/icons/StaffIcon';
-import ClassesIcon from '../components/icons/ClassesIcon';
-import RupeeIcon from '../components/icons/RupeeIcon';
-import ExpensesIcon from '../components/icons/ExpensesIcon';
-import DuesIcon from '../components/icons/DuesIcon';
-import AcademicCapIcon from '../components/icons/AcademicCapIcon';
+import {
+    Chart as ChartJS, CategoryScale, LinearScale, BarElement,
+    LineElement, PointElement, ArcElement, Title, Tooltip, Legend, Filler
+} from 'chart.js';
+import { Bar, Line, Doughnut } from 'react-chartjs-2';
+
+ChartJS.register(
+    CategoryScale, LinearScale, BarElement, LineElement, PointElement, ArcElement, Title, Tooltip, Legend, Filler
+);
 
 interface DashboardProps {
-    user: User;
+    user?: any;
 }
 
-interface DashboardData {
-    totalStudents: number;
-    totalBoys: number;
-    totalGirls: number;
-    totalStaff: number;
-    totalClasses: number;
-    totalSubjects: number;
-    
-    totalRevenue: number;
-    totalExpenses: number;
-    totalSalariesPaid: number;
-    totalDues: number;
-    
-    attendanceToday: { label: string; value: number; color: string }[];
-    genderData: { label: string; value: number; color: string }[];
-    casteData: { label: string; value: number; color: string }[];
-    feeStatusData: { label: string; value: number; color: string }[];
-    
-    revenueTrend: { label: string; value: number }[];
-    admissionTrend: { label: string; value: number }[];
-    expenseCategory: { label: string; value: number; color: string }[];
-    classStrength: { label: string; value: number }[];
-    
-    schoolProfile: any; 
-}
-
-const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const monthKeys: (keyof Student)[] = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
-
-const parsePaidAmount = (status: string | undefined | null): number => {
-    if (!status || status === 'undefined' || status === 'Dues') return 0;
-    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(status)) return Infinity;
-    return status.split(';').reduce((total, p) => {
-        const parts = p.split('=d=');
-        return total + (parts.length === 2 ? parseFloat(parts[0]) || 0 : 0);
-    }, 0);
-};
+const EDGE_FUNCTION_URL = 'https://fatch.digitalerp.shop/api/dashboardload';
 
 const Dashboard: React.FC<DashboardProps> = ({ user }) => {
-    const [data, setData] = useState<DashboardData | null>(null);
-    const [loading, setLoading] = useState(true);
+    // State Management
+    const [jwtToken, setJwtToken] = useState('');
+    const [refreshToken, setRefreshToken] = useState('');
+    const [view, setView] = useState<'token' | 'dashboard'>('token');
+    const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [trialExpired, setTrialExpired] = useState(false);
-    
-    const [timeLeft, setTimeLeft] = useState<{days: number, hours: number, min: number, sec: number} | null>(null);
-    const [currentPremiumPrice, setCurrentPremiumPrice] = useState(999);
 
-    const fetchData = useCallback(async () => {
-        setLoading(true);
-        try {
-            const currentYear = new Date().getFullYear();
-            const today = new Date().toISOString().split('T')[0];
-            const currentMonthIdx = new Date().getMonth();
+    // Data States matching new JSON format
+    const [overview, setOverview] = useState<any>(null);
+    const [financialSummary, setFinancialSummary] = useState<any>(null);
+    const [chartsData, setChartsData] = useState<any>(null);
 
-            const [studentsRes, staffRes, classesRes, subjectsRes, expensesRes, salaryRes, attRes, ownerRes] = await Promise.all([
-                supabase.from('students').select('*'),
-                supabase.from('staff').select('*'),
-                supabase.from('classes').select('*'),
-                supabase.from('subjects').select('*', { count: 'exact', head: true }),
-                supabase.from('expenses').select('*'),
-                supabase.from('salary_records').select('*'),
-                supabase.from('attendance').select('*').eq('date', today),
-                supabase.from('owner').select('*').eq('uid', user.id).single()
-            ]);
+    // Initial check for tokens
+    useEffect(() => {
+        const checkTokens = async () => {
+            const savedToken = localStorage.getItem('manual_jwt_token');
+            const savedRefresh = localStorage.getItem('manual_refresh_token');
 
-            if (studentsRes.error) throw studentsRes.error;
-
-            const students = studentsRes.data as Student[];
-            const staff = staffRes.data as Staff[];
-            const classes = classesRes.data as Class[];
-            const expenses = expensesRes.data as Expense[];
-            const salaries = salaryRes.data as SalaryRecord[];
-            const attendance = attRes.data as Attendance[];
-            const ownerProfile = ownerRes.data;
-
-            // --- PREMIUM & TRIAL ENFORCEMENT LOGIC ---
-            if (ownerProfile) {
-                const now = new Date();
-                const regDate = new Date(ownerProfile.register_date);
-                const diffTime = Math.abs(now.getTime() - regDate.getTime());
-                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                
-                let shouldUpdateDB = false;
-                let updateData: any = {};
-
-                // Check end_premium (Format: 2026-01-23-12:19)
-                if (ownerProfile.end_premium) {
-                    // Convert custom format YYYY-MM-DD-HH:mm to standard YYYY-MM-DD HH:mm for parsing
-                    const dateParts = ownerProfile.end_premium.split('-');
-                    const formattedExpiryStr = `${dateParts[0]}-${dateParts[1]}-${dateParts[2]} ${dateParts[3]}`;
-                    const expiryDate = new Date(formattedExpiryStr);
-
-                    if (now > expiryDate) {
-                        updateData.premium_status = "";
-                        updateData.end_premium = "";
-                        shouldUpdateDB = true;
-                    }
-                } 
-                // Check 90 Days Trial Logic (only if end_premium is not set)
-                else if (diffDays > 90) {
-                    setTrialExpired(true);
-                    if (ownerProfile.premium_status) {
-                        updateData.premium_status = "";
-                        shouldUpdateDB = true;
-                    }
-                }
-
-                if (shouldUpdateDB) {
-                    await supabase.from('owner').update(updateData).eq('uid', user.id);
-                    // Refresh profile in local state
-                    ownerProfile.premium_status = updateData.premium_status ?? ownerProfile.premium_status;
-                    ownerProfile.end_premium = updateData.end_premium ?? ownerProfile.end_premium;
-                }
+            if (savedToken) {
+                setJwtToken(savedToken);
+                if (savedRefresh) setRefreshToken(savedRefresh);
+                fetchDashboardData(savedToken);
+                return;
             }
 
-            const classFeesMap = new Map(classes.map(c => [c.class_name, c.school_fees || 0]));
-            let totalRevenue = 0;
-            let totalDues = 0;
-            let paidStudentsCount = 0;
-            
-            const monthlyRevenue = new Array(12).fill(0);
-            const monthlyAdmissions = new Array(12).fill(0);
-            const casteMap = new Map<string, number>();
-            const expenseMap = new Map<string, number>();
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session?.access_token) {
+                setJwtToken(session.access_token);
+                setRefreshToken(session.refresh_token || '');
+                fetchDashboardData(session.access_token);
+            }
+        };
+        checkTokens();
+    }, []);
 
-            students.forEach(s => {
-                const className = s.class || '';
-                const fee = classFeesMap.get(className) || 0;
-                let studentHasDues = false;
-
-                if (s.registration_date) {
-                    const d = new Date(s.registration_date);
-                    if (d.getFullYear() === currentYear) monthlyAdmissions[d.getMonth()]++;
+    const fetchDashboardData = async (token: string) => {
+        setLoading(true);
+        setView('dashboard');
+        setError(null);
+        try {
+            const response = await fetch(EDGE_FUNCTION_URL, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
                 }
-
-                const c = s.caste || 'General';
-                casteMap.set(c, (casteMap.get(c) || 0) + 1);
-
-                totalDues += (s.previous_dues || 0);
-                if ((s.previous_dues || 0) > 0) studentHasDues = true;
-
-                monthKeys.forEach((key, idx) => {
-                    const status = s[key] as string;
-                    const paid = parsePaidAmount(status);
-                    const actualPaid = paid === Infinity ? fee : paid;
-                    
-                    totalRevenue += actualPaid;
-                    const d = status && /^\d{4}/.test(status) ? new Date(status.split(';')[0].split('=d=')[1] || status) : null;
-                    if (d && d.getFullYear() === currentYear) monthlyRevenue[d.getMonth()] += actualPaid;
-
-                    if (idx <= currentMonthIdx) {
-                        const due = fee - actualPaid;
-                        if (due > 0) {
-                            totalDues += due;
-                            studentHasDues = true;
-                        }
-                    }
-                });
-
-                if (!studentHasDues) paidStudentsCount++;
             });
 
-            let presentCount = 0;
-            attendance.forEach(rec => {
-                presentCount += rec.present ? rec.present.split(',').length : 0;
-            });
+            if (!response.ok) {
+                const errData = await response.json().catch(() => ({}));
+                throw new Error(errData.error || errData.message || `API Error: Status ${response.status}`);
+            }
 
-            const totalSalariesPaid = salaries.reduce((sum, s) => sum + s.amount, 0);
-            const totalExps = expenses.reduce((sum, e) => {
-                expenseMap.set(e.category, (expenseMap.get(e.category) || 0) + e.amount);
-                return sum + e.amount;
-            }, 0);
+            const data = await response.json();
 
-            const expenseCategory = Array.from(expenseMap.entries()).map(([label, value], i) => ({
-                label, value, color: ['#f87171', '#60a5fa', '#34d399', '#fbbf24', '#a78bfa'][i % 5]
-            }));
-
-            const classCountMap = new Map<string, number>();
-            students.forEach(s => { if(s.class) classCountMap.set(s.class, (classCountMap.get(s.class) || 0) + 1); });
-
-            setData({
-                totalStudents: students.length,
-                totalBoys: students.filter(s => s.gender === 'Male').length,
-                totalGirls: students.filter(s => s.gender === 'Female').length,
-                totalStaff: staff.length,
-                totalClasses: classes.length,
-                totalSubjects: subjectsRes.count || 0,
-                totalRevenue,
-                totalExpenses: totalExps + totalSalariesPaid,
-                totalSalariesPaid,
-                totalDues,
-                attendanceToday: [
-                    { label: 'Present', value: presentCount, color: '#10b981' },
-                    { label: 'Absent', value: Math.max(0, students.length - presentCount), color: '#ef4444' }
-                ],
-                genderData: [
-                    { label: 'Boys', value: students.filter(s => s.gender === 'Male').length, color: '#3b82f6' },
-                    { label: 'Girls', value: students.filter(s => s.gender === 'Female').length, color: '#ec4899' }
-                ],
-                casteData: Array.from(casteMap.entries()).map(([label, value], i) => ({
-                    label, value, color: ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#ec4899'][i % 5]
-                })),
-                feeStatusData: [
-                    { label: 'Fully Paid', value: paidStudentsCount, color: '#10b981' },
-                    { label: 'Pending', value: students.length - paidStudentsCount, color: '#f59e0b' }
-                ],
-                revenueTrend: monthlyRevenue.map((val, i) => ({ label: monthNames[i], value: val })),
-                admissionTrend: monthlyAdmissions.map((val, i) => ({ label: monthNames[i], value: val })),
-                expenseCategory,
-                classStrength: Array.from(classCountMap.entries()).map(([label, value]) => ({ label, value })).sort((a,b) => b.value - a.value).slice(0, 10),
-                schoolProfile: ownerProfile
-            });
-
+            // Map according to the new backend format
+            setOverview(data.overview);
+            setFinancialSummary(data.financial_summary);
+            setChartsData(data.charts_data);
         } catch (err: any) {
-            setError(err.message);
+            console.error("Dashboard Fetch Error:", err);
+            setError(err.message || 'Data fetch failed! Your token might be expired or invalid.');
+            setView('token');
         } finally {
             setLoading(false);
         }
-    }, [user.id]);
+    };
 
-    useEffect(() => { fetchData(); }, [fetchData]);
+    const handleFormSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!jwtToken) {
+            setError("Please enter a valid Access Token.");
+            return;
+        }
 
-    useEffect(() => {
-        if (!data?.schoolProfile?.register_date) return;
+        setError(null);
+        localStorage.setItem('manual_jwt_token', jwtToken);
+        if (refreshToken) localStorage.setItem('manual_refresh_token', refreshToken);
 
-        const regDate = new Date(data.schoolProfile.register_date);
-        const trialEndDate = new Date(regDate.getTime() + 90 * 24 * 60 * 60 * 1000);
+        fetchDashboardData(jwtToken);
+    };
 
-        const timer = setInterval(() => {
-            const now = new Date();
-            const diff = trialEndDate.getTime() - now.getTime();
+    const handleLogout = () => {
+        localStorage.removeItem('manual_jwt_token');
+        localStorage.removeItem('manual_refresh_token');
+        setJwtToken('');
+        setRefreshToken('');
+        setOverview(null);
+        setFinancialSummary(null);
+        setChartsData(null);
+        setView('token');
+    };
 
-            if (diff <= 0) {
-                setTimeLeft({ days: 0, hours: 0, min: 0, sec: 0 });
-                clearInterval(timer);
-            } else {
-                setTimeLeft({
-                    days: Math.floor(diff / (1000 * 60 * 60 * 24)),
-                    hours: Math.floor((diff / (1000 * 60 * 60)) % 24),
-                    min: Math.floor((diff / 1000 / 60) % 60),
-                    sec: Math.floor((diff / 1000) % 60)
-                });
+    const formatCurrency = (amount: number) => {
+        return new Intl.NumberFormat('en-IN', {
+            style: 'currency', currency: 'INR', maximumFractionDigits: 0
+        }).format(amount || 0);
+    };
+
+    const classNames = chartsData?.classAnalytics ? Object.keys(chartsData.classAnalytics).sort() : [];
+    const monthNames = chartsData?.monthlyTrends ? Object.keys(chartsData.monthlyTrends) : [];
+
+    // Modernized Chart Colors and Configurations
+    const feesChartData = {
+        labels: classNames,
+        datasets: [
+            {
+                label: 'Paid Fees (₹)',
+                data: classNames.map(c => chartsData?.classAnalytics?.[c]?.currentMonthPaid || 0),
+                backgroundColor: 'rgba(16, 185, 129, 0.95)',
+                borderRadius: 4,
+                barPercentage: 0.6
+            },
+            {
+                label: 'Pending Dues (₹)',
+                data: classNames.map(c => chartsData?.classAnalytics?.[c]?.currentMonthDues || 0),
+                backgroundColor: 'rgba(244, 63, 94, 0.95)',
+                borderRadius: 4,
+                barPercentage: 0.6
             }
+        ]
+    };
 
-            const daysSinceReg = Math.floor((now.getTime() - regDate.getTime()) / (1000 * 60 * 60 * 24));
-            const calculatedPrice = 999 + (daysSinceReg * 10);
-            setCurrentPremiumPrice(Math.min(calculatedPrice, 1299));
+    const monthlyTrendsChartData = {
+        labels: monthNames.map(m => m.charAt(0).toUpperCase() + m.slice(1)),
+        datasets: [
+            {
+                label: 'Total Paid',
+                data: monthNames.map(m => chartsData?.monthlyTrends?.[m]?.totalPaid || 0),
+                borderColor: '#10b981',
+                backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                borderWidth: 2.5,
+                fill: true,
+                tension: 0.4,
+                pointBackgroundColor: '#ffffff',
+                pointBorderColor: '#10b981',
+                pointBorderWidth: 2,
+                pointRadius: 4,
+            },
+            {
+                label: 'Total Dues',
+                data: monthNames.map(m => chartsData?.monthlyTrends?.[m]?.totalDues || 0),
+                borderColor: '#f43f5e',
+                backgroundColor: 'rgba(244, 63, 94, 0.05)',
+                borderWidth: 2.5,
+                fill: true,
+                tension: 0.4,
+                pointBackgroundColor: '#ffffff',
+                pointBorderColor: '#f43f5e',
+                pointBorderWidth: 2,
+                pointRadius: 4,
+            }
+        ]
+    };
 
-        }, 1000);
+    const admissionsChartData = {
+        labels: classNames,
+        datasets: [{
+            label: 'New Students',
+            data: classNames.map(c => chartsData?.classAnalytics?.[c]?.admissionsThisMonth || 0),
+            borderColor: '#6366f1',
+            backgroundColor: 'rgba(99, 102, 241, 0.12)',
+            borderWidth: 2.5,
+            fill: true,
+            tension: 0.4,
+            pointBackgroundColor: '#ffffff',
+            pointBorderColor: '#6366f1',
+            pointBorderWidth: 2,
+            pointRadius: 4,
+            pointHoverRadius: 6
+        }]
+    };
 
-        return () => clearInterval(timer);
-    }, [data?.schoolProfile]);
+    const genderChartData = {
+        labels: classNames,
+        datasets: [
+            {
+                label: 'Boys',
+                data: classNames.map(c => chartsData?.classGenderDistribution?.[c]?.boys || 0),
+                backgroundColor: '#3b82f6',
+                borderRadius: 4,
+                barPercentage: 0.6
+            },
+            {
+                label: 'Girls',
+                data: classNames.map(c => chartsData?.classGenderDistribution?.[c]?.girls || 0),
+                backgroundColor: '#ec4899',
+                borderRadius: 4,
+                barPercentage: 0.6
+            }
+        ]
+    };
 
-    if (loading) return <div className="flex items-center justify-center h-screen bg-gray-50"><Spinner size="12"/></div>;
-    if (error) return <div className="text-center text-red-500 p-8 text-xl font-bold">Error: {error}</div>;
-    if (!data) return null;
+    const casteLabels = chartsData ? Object.keys(chartsData.casteDistribution || {}) : [];
+    const casteValues = chartsData ? Object.values(chartsData.casteDistribution || {}) : [];
 
-    const format = (val: number) => `₹${val.toLocaleString('en-IN')}`;
+    const casteChartData = {
+        labels: casteLabels as string[],
+        datasets: [{
+            data: casteValues as number[],
+            backgroundColor: ['#6366f1', '#10b981', '#f59e0b', '#f43f5e', '#06b6d4', '#8b5cf6'],
+            borderWidth: 0,
+            hoverOffset: 4
+        }]
+    };
+
+    const commonOptions = {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            tooltip: {
+                backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                padding: { top: 12, bottom: 12, left: 16, right: 16 },
+                cornerRadius: 12,
+                titleFont: { size: 13, family: "'Plus Jakarta Sans', sans-serif", weight: 'bold' as const },
+                bodyFont: { size: 13, family: "'Plus Jakarta Sans', sans-serif" },
+                displayColors: true,
+                boxPadding: 4,
+            },
+            legend: {
+                labels: {
+                    usePointStyle: true,
+                    boxWidth: 8,
+                    font: { family: "'Plus Jakarta Sans', sans-serif", size: 12 }
+                }
+            }
+        },
+        scales: {
+            x: {
+                grid: { display: false },
+                ticks: { font: { family: "'Plus Jakarta Sans', sans-serif", size: 11 }, color: '#64748b' },
+                border: { display: false }
+            },
+            y: {
+                grid: { color: '#f1f5f9' },
+                ticks: { font: { family: "'Plus Jakarta Sans', sans-serif", size: 11 }, color: '#64748b' },
+                border: { display: false },
+                beginAtZero: true
+            }
+        }
+    };
+
+    const stats = [
+        { title: 'Total Students', value: overview?.totalStudents || 0, icon: 'fa-users', color: 'text-indigo-600', bg: 'bg-indigo-50 border-indigo-100' },
+        { title: 'Active Classes', value: overview?.totalClasses || 0, icon: 'fa-chalkboard-user', color: 'text-emerald-600', bg: 'bg-emerald-50 border-emerald-100' },
+        { title: 'Total Staff', value: overview?.totalStaff || 0, icon: 'fa-user-tie', color: 'text-amber-600', bg: 'bg-amber-50 border-amber-100' },
+        { title: 'Gender Ratio', value: `${overview?.totalBoys || 0}B / ${overview?.totalGirls || 0}G`, icon: 'fa-children', color: 'text-rose-600', bg: 'bg-rose-50 border-rose-100' },
+    ];
 
     return (
-        <div className="space-y-8 animate-fade-in pb-12">
+        <div className="w-full min-h-full font-sans text-slate-800 animate-fade-in pb-10">
             <style>{`
-                @keyframes blink {
-                    0% { opacity: 1; transform: scale(1); }
-                    50% { opacity: 0.5; transform: scale(0.98); }
-                    100% { opacity: 1; transform: scale(1); }
+                @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+                .animate-fade-in { animation: fadeIn 0.4s ease-out forwards; }
+                
+                @keyframes blob {
+                    0% { transform: translate(0px, 0px) scale(1); }
+                    33% { transform: translate(30px, -50px) scale(1.1); }
+                    66% { transform: translate(-20px, 20px) scale(0.9); }
+                    100% { transform: translate(0px, 0px) scale(1); }
                 }
-                .bhuk-bhak {
-                    animation: blink 1.5s infinite ease-in-out;
-                }
-                .premium-banner {
-                    background: linear-gradient(90deg, #4f46e5, #9333ea, #db2777);
-                    background-size: 200% 200%;
-                    animation: gradientShift 5s ease infinite;
-                }
-                @keyframes gradientShift {
-                    0% { background-position: 0% 50%; }
-                    50% { background-position: 100% 50%; }
-                    100% { background-position: 0% 50%; }
-                }
+                .animate-blob { animation: blob 7s infinite; }
+                .animation-delay-2000 { animation-delay: 2s; }
+                
+                .glass-card { background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
             `}</style>
 
-            {/* Trial Expiry Alert */}
-            {trialExpired && !data.schoolProfile?.premium_status && (
-                <div className="bg-rose-600 text-white p-4 rounded-xl shadow-lg flex items-center justify-between mb-4 border-2 border-white animate-pulse">
-                    <div className="flex items-center gap-3">
-                        <span className="text-2xl">⚠️</span>
-                        <div>
-                            <p className="font-black text-lg">90-Day Free Trial Expired</p>
-                            <p className="text-xs opacity-90">Please activate your account to avoid data restriction.</p>
-                        </div>
-                    </div>
-                    <a href="tel:9241981083" className="bg-white text-rose-600 px-4 py-2 rounded-lg font-black text-sm hover:bg-rose-50 transition-colors">ACTIVATE NOW</a>
-                </div>
-            )}
+            {view === 'token' && (
+                <div className="flex items-center justify-center min-h-[70vh]">
+                    <div className="w-full max-w-lg bg-white rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 p-8 sm:p-10 relative overflow-hidden">
+                        <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-50 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3 opacity-50 mix-blend-multiply animate-blob"></div>
+                        <div className="absolute bottom-0 left-0 w-64 h-64 bg-purple-50 rounded-full blur-3xl translate-y-1/3 -translate-x-1/3 opacity-50 mix-blend-multiply animate-blob animation-delay-2000"></div>
 
-            {/* Promotion Banner */}
-            {timeLeft && (
-                <div className="premium-banner rounded-3xl p-6 text-white shadow-2xl overflow-hidden relative border-4 border-yellow-400 bhuk-bhak">
-                    <div className="absolute -right-10 -top-10 opacity-10 rotate-12">
-                        <RupeeIcon className="w-64 h-64" />
-                    </div>
-                    <div className="flex flex-col md:flex-row justify-between items-center gap-6 relative z-10">
-                        <div className="text-center md:text-left">
-                            <h2 className="text-3xl font-black tracking-tighter uppercase mb-1">🎁 Limited Time Free Trial 🎁</h2>
-                            <p className="text-indigo-100 font-bold text-lg">Your high-security administrative environment is active.</p>
-                            <div className="mt-4 flex flex-wrap justify-center md:justify-start gap-4">
-                                <div className="bg-white/20 px-4 py-2 rounded-xl backdrop-blur-md border border-white/30 text-center min-w-[80px]">
-                                    <span className="block text-2xl font-black">{timeLeft.days}</span>
-                                    <span className="text-[10px] uppercase font-bold tracking-widest">Days</span>
-                                </div>
-                                <div className="bg-white/20 px-4 py-2 rounded-xl backdrop-blur-md border border-white/30 text-center min-w-[80px]">
-                                    <span className="block text-2xl font-black">{timeLeft.hours}</span>
-                                    <span className="text-[10px] uppercase font-bold tracking-widest">Hours</span>
-                                </div>
-                                <div className="bg-white/20 px-4 py-2 rounded-xl backdrop-blur-md border border-white/30 text-center min-w-[80px]">
-                                    <span className="block text-2xl font-black">{timeLeft.min}</span>
-                                    <span className="text-[10px] uppercase font-bold tracking-widest">Mins</span>
-                                </div>
-                                <div className="bg-white/20 px-4 py-2 rounded-xl backdrop-blur-md border border-white/30 text-center min-w-[80px]">
-                                    <span className="block text-2xl font-black text-yellow-300">{timeLeft.sec}</span>
-                                    <span className="text-[10px] uppercase font-bold tracking-widest text-yellow-200">Secs</span>
-                                </div>
+                        <div className="relative z-10">
+                            <div className="w-16 h-16 bg-gradient-to-tr from-indigo-500 to-purple-500 rounded-3xl flex items-center justify-center text-white text-2xl mx-auto mb-8 shadow-lg shadow-indigo-500/30">
+                                <i className="fa-solid fa-server mt-0.5"></i>
                             </div>
-                        </div>
+                            <div className="text-center mb-10">
+                                <h2 className="text-3xl font-extrabold text-slate-800 tracking-tight">Connect Analytics</h2>
+                                <p className="text-slate-500 text-sm mt-3 font-medium">Enter your secure API tokens to synchronize the live dashboard data engine.</p>
+                            </div>
 
-                        <div className="bg-yellow-400 text-slate-900 p-6 rounded-2xl shadow-inner border-2 border-white text-center md:text-right min-w-[280px]">
-                            <p className="text-xs font-black uppercase tracking-tighter opacity-70">Exclusive Activation Offer</p>
-                            <div className="flex items-center justify-center md:justify-end gap-2 my-1">
-                                <span className="text-lg line-through opacity-50 font-bold">₹1299</span>
-                                <span className="text-4xl font-black">₹{currentPremiumPrice}</span>
-                                <span className="text-xs font-bold bg-slate-900 text-white px-2 py-0.5 rounded">/YEAR</span>
-                            </div>
-                            <p className="text-[10px] font-bold text-rose-600 mb-4">*Price increases ₹10 every 24 hours</p>
-                            <div className="bg-slate-900 text-white p-3 rounded-xl">
-                                <p className="text-[10px] font-bold uppercase mb-1 opacity-60">Contact Agent for Activation</p>
-                                <a href="tel:9241981083" className="text-xl font-black hover:text-yellow-400 transition-colors">9241981083</a>
-                            </div>
+                            <form onSubmit={handleFormSubmit} className="space-y-6">
+                                <div>
+                                    <label className="block text-sm font-bold text-slate-700 mb-2">Access Token (JWT) <span className="text-rose-500">*</span></label>
+                                    <textarea required rows={3} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all outline-none font-mono text-sm resize-none placeholder-slate-400" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." value={jwtToken} onChange={e => setJwtToken(e.target.value)}></textarea>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-bold text-slate-700 mb-2">Refresh Token <span className="text-slate-400 font-normal">(Optional)</span></label>
+                                    <textarea rows={2} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all outline-none font-mono text-sm resize-none placeholder-slate-400" placeholder="Paste your refresh token here..." value={refreshToken} onChange={e => setRefreshToken(e.target.value)}></textarea>
+                                </div>
+
+                                {error && (
+                                    <div className="p-4 bg-red-50 text-red-600 text-sm font-semibold rounded-2xl border border-red-100 flex items-start shadow-sm">
+                                        <i className="fa-solid fa-circle-exclamation mt-0.5 mr-2.5 text-base"></i> <span>{error}</span>
+                                    </div>
+                                )}
+
+                                <button type="submit" disabled={loading} className="w-full bg-slate-900 hover:bg-indigo-600 text-white font-bold py-4 px-4 rounded-2xl transition-all shadow-[0_8px_16px_rgb(0,0,0,0.1)] active:scale-[0.98] flex justify-center items-center gap-2.5 mt-2">
+                                    {loading ? <i className="fa-solid fa-circle-notch fa-spin text-lg"></i> : <i className="fa-solid fa-bolt text-lg text-amber-300"></i>}
+                                    {loading ? 'Initializing...' : 'Launch Dashboard'}
+                                </button>
+                            </form>
                         </div>
                     </div>
                 </div>
             )}
 
-            <div className="flex flex-col md:flex-row justify-between items-end gap-4 border-b border-gray-200 pb-6">
-                <div>
-                    <h1 className="text-4xl font-black text-gray-900 tracking-tight">Institutional Dashboard</h1>
-                    <p className="text-gray-500 mt-1 font-medium">Global analytics and operational health overview.</p>
-                </div>
-                <div className="flex gap-2">
-                    <button onClick={fetchData} className="px-4 py-2 bg-white border border-gray-300 rounded-lg shadow-sm text-sm font-bold text-gray-700 hover:bg-gray-50 transition-all">Refresh Analytics</button>
-                </div>
-            </div>
-
-            {/* Core Metrics Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                <StatCard title="Total Students" value={data.totalStudents} icon={<StudentsIcon className="text-white w-6 h-6"/>} color="bg-indigo-600" />
-                <StatCard title="Total Staff" value={data.totalStaff} icon={<StaffIcon className="text-white w-6 h-6"/>} color="bg-pink-600" />
-                <StatCard title="Total Classes" value={data.totalClasses} icon={<ClassesIcon className="text-white w-6 h-6"/>} color="bg-blue-600" />
-                <StatCard title="Subjects Taught" value={data.totalSubjects} icon={<AcademicCapIcon className="text-white w-6 h-6"/>} color="bg-teal-600" />
-            </div>
-
-            {/* Financial Health Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                <StatCard title="Total Revenue" value={format(data.totalRevenue)} icon={<RupeeIcon className="text-white w-6 h-6"/>} color="bg-emerald-600" />
-                <StatCard title="Net Liabilities" value={format(data.totalExpenses)} icon={<ExpensesIcon className="text-white w-6 h-6"/>} color="bg-rose-600" />
-                <StatCard title="Total Dues Amount" value={format(data.totalDues)} icon={<DuesIcon className="text-white w-6 h-6"/>} color="bg-amber-500" />
-                <StatCard title="Salaries Disbursed" value={format(data.totalSalariesPaid)} icon={<RupeeIcon className="text-white w-6 h-6"/>} color="bg-indigo-400" />
-            </div>
-
-            {/* Demographics Row */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <div className="bg-white p-6 rounded-3xl shadow-xl border border-blue-50">
-                    <div className="flex justify-around items-center">
-                        <div className="text-center">
-                            <p className="text-blue-500 font-black text-4xl">{data.totalBoys}</p>
-                            <p className="text-gray-400 text-xs font-bold uppercase tracking-widest mt-1">Total Boys</p>
+            {view === 'dashboard' && (
+                <div className="space-y-8">
+                    {loading ? (
+                        <div className="flex flex-col items-center justify-center min-h-[60vh]">
+                            <div className="relative w-24 h-24 mb-8">
+                                <div className="absolute inset-0 border-4 border-slate-100 rounded-full"></div>
+                                <div className="absolute inset-0 border-4 border-indigo-600 rounded-full border-t-transparent animate-spin"></div>
+                                <i className="fa-solid fa-chart-pie absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-2xl text-indigo-600"></i>
+                            </div>
+                            <h3 className="text-2xl font-extrabold text-slate-800 tracking-tight">Processing Analytics</h3>
+                            <p className="text-indigo-500 font-semibold text-sm mt-3 animate-pulse bg-indigo-50 px-4 py-1.5 rounded-full border border-indigo-100">Aggregating real-time data from secure engine...</p>
                         </div>
-                        <div className="h-12 w-px bg-gray-100"></div>
-                        <div className="text-center">
-                            <p className="text-pink-500 font-black text-4xl">{data.totalGirls}</p>
-                            <p className="text-gray-400 text-xs font-bold uppercase tracking-widest mt-1">Total Girls</p>
-                        </div>
-                    </div>
-                </div>
-                <div className="lg:col-span-2 bg-white p-6 rounded-3xl shadow-xl border border-gray-100">
-                    <LineChart title="Fee Collection Trend (YTD)" data={data.revenueTrend} color="#10b981" />
-                </div>
-            </div>
+                    ) : (
+                        <>
+                            {/* Premium Header Section */}
+                            <div className="bg-white rounded-[2rem] p-8 sm:p-10 border border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex flex-col md:flex-row md:items-center justify-between gap-8 relative overflow-hidden">
+                                <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-gradient-to-br from-indigo-50 to-purple-50 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3 opacity-80 pointer-events-none"></div>
 
-            {/* Analytical Charts */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <DonutChart title="Today's Turnout" data={data.attendanceToday} />
-                <DonutChart title="Gender Ratio" data={data.genderData} />
-                <DonutChart title="Financial Standing" data={data.feeStatusData} />
-                
-                <div className="lg:col-span-2">
-                    <SimpleBarChart title="Top 10 Class Strengths" data={data.classStrength} color="bg-indigo-400" />
-                </div>
-                <DonutChart title="Expense Split" data={data.expenseCategory} />
+                                <div className="relative z-10 flex-1">
+                                    <div className="flex items-center gap-3 mb-4">
+                                        <span className="px-4 py-1.5 bg-indigo-50 text-indigo-700 text-xs font-bold rounded-xl border border-indigo-100/50 flex items-center gap-1.5">
+                                            <i className="fa-solid fa-calendar-alt text-indigo-400"></i>
+                                            {overview?.currentMonth || 'Current Month'} Report
+                                        </span>
+                                        <span className="flex items-center text-xs text-emerald-600 font-bold bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-100/50">
+                                            <span className="relative flex h-2 w-2 mr-2">
+                                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                                            </span>
+                                            Live Sync
+                                        </span>
+                                    </div>
+                                    <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold text-slate-800 tracking-tight">Data Intelligence Center</h1>
+                                    <p className="text-slate-500 mt-3 font-medium text-base sm:text-lg max-w-2xl">Complete operational clarity. View metrics, track revenue, and monitor student demographics in real-time.</p>
+                                </div>
+                                <div className="relative z-10 flex shrink-0">
+                                    <button onClick={handleLogout} className="px-6 py-3.5 bg-white border border-slate-200 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 text-slate-600 font-bold rounded-2xl transition-all shadow-sm focus:ring-4 focus:ring-rose-50 flex items-center justify-center gap-2.5 w-full md:w-auto">
+                                        <i className="fa-solid fa-power-off"></i> Disconnect Engine
+                                    </button>
+                                </div>
+                            </div>
 
-                <div className="lg:col-span-2">
-                    <SimpleBarChart title="Admission Growth (Monthly)" data={data.admissionTrend} color="bg-teal-400" />
+                            {/* Main Metrics Row */}
+                            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+                                {stats.map((stat, i) => (
+                                    <div key={i} className="bg-white p-6 sm:p-8 rounded-[2rem] border border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.02)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.06)] transition-all duration-300 transform hover:-translate-y-1 group relative overflow-hidden">
+                                        <div className={`absolute -right-4 -top-4 w-24 h-24 ${stat.bg} rounded-full opacity-50 transition-transform duration-500 group-hover:scale-150 pointer-events-none`}></div>
+                                        <div className="relative z-10">
+                                            <div className={`w-14 h-14 rounded-2xl ${stat.bg} ${stat.color} flex items-center justify-center text-2xl mb-5 shadow-sm border`}>
+                                                <i className={`fa-solid ${stat.icon}`}></i>
+                                            </div>
+                                            <p className="text-slate-400 text-sm font-bold uppercase tracking-wider mb-1">{stat.title}</p>
+                                            <h4 className="text-3xl sm:text-4xl font-black text-slate-800 tracking-tight">{stat.value}</h4>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            {/* Expanded Financial Summary Section */}
+                            <div className="mb-4">
+                                <h2 className="text-xl font-extrabold text-slate-800 mb-4 px-2">Financial Overview</h2>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+                                    {/* Total Expected/Paid Income */}
+                                    <div className="p-6 rounded-3xl bg-emerald-600 text-white relative overflow-hidden shadow-lg border border-emerald-500 group cursor-pointer hover:bg-emerald-700 transition">
+                                        <div className="absolute -right-6 -bottom-6 opacity-10 transform pointer-events-none">
+                                            <i className="fa-solid fa-vault text-[8rem]"></i>
+                                        </div>
+                                        <div className="relative z-10">
+                                            <p className="text-emerald-100 font-bold uppercase tracking-wider text-xs mb-2">Total School Revenue</p>
+                                            <h3 className="text-3xl sm:text-4xl font-black tracking-tighter mb-1">{formatCurrency(financialSummary?.schoolTotalPaidAllMonths || 0)}</h3>
+                                            <p className="text-emerald-200 text-xs font-semibold mt-2">All Months Paid Fees</p>
+                                        </div>
+                                    </div>
+
+                                    {/* Total Dues */}
+                                    <div className="p-6 rounded-3xl bg-rose-500 text-white relative overflow-hidden shadow-lg border border-rose-400 group cursor-pointer hover:bg-rose-600 transition">
+                                        <div className="absolute -right-6 -bottom-6 opacity-10 transform pointer-events-none">
+                                            <i className="fa-solid fa-hand-holding-dollar text-[8rem]"></i>
+                                        </div>
+                                        <div className="relative z-10">
+                                            <p className="text-rose-100 font-bold uppercase tracking-wider text-xs mb-2">Total Outstanding Dues</p>
+                                            <h3 className="text-3xl sm:text-4xl font-black tracking-tighter mb-1">{formatCurrency(financialSummary?.schoolTotalDuesAllMonths || 0)}</h3>
+                                            <p className="text-rose-200 text-xs font-semibold mt-2">All Months Pending Fees</p>
+                                        </div>
+                                    </div>
+
+                                    {/* Total Staff Paid */}
+                                    <div className="p-6 rounded-3xl bg-slate-800 text-white relative overflow-hidden shadow-lg border border-slate-700 group cursor-pointer hover:bg-slate-900 transition">
+                                        <div className="absolute -right-6 -bottom-6 opacity-10 transform pointer-events-none">
+                                            <i className="fa-solid fa-money-check-dollar text-[8rem]"></i>
+                                        </div>
+                                        <div className="relative z-10">
+                                            <p className="text-slate-300 font-bold uppercase tracking-wider text-xs mb-2">Staff Salary Dispursed</p>
+                                            <h3 className="text-3xl sm:text-4xl font-black tracking-tighter mb-1">{formatCurrency(financialSummary?.totalStaffPaidSalary || 0)}</h3>
+                                            <p className="text-slate-400 text-xs font-semibold mt-2">Paid to Employees</p>
+                                        </div>
+                                    </div>
+
+                                    {/* Total Expenses */}
+                                    <div className="p-6 rounded-3xl bg-indigo-600 text-white relative overflow-hidden shadow-lg border border-indigo-500 group cursor-pointer hover:bg-indigo-700 transition">
+                                        <div className="absolute -right-6 -bottom-6 opacity-10 transform pointer-events-none">
+                                            <i className="fa-solid fa-file-invoice-dollar text-[8rem]"></i>
+                                        </div>
+                                        <div className="relative z-10">
+                                            <p className="text-indigo-200 font-bold uppercase tracking-wider text-xs mb-2">Operational Expenses</p>
+                                            <h3 className="text-3xl sm:text-4xl font-black tracking-tighter mb-1">{formatCurrency(financialSummary?.totalOtherExpenses || 0)}</h3>
+                                            <p className="text-indigo-200 text-xs font-semibold mt-2">Other Total Expenses</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Additional Financial Stats */}
+                                <div className="mt-4 flex flex-wrap gap-4">
+                                    <div className="bg-white border text-sm font-semibold rounded-full px-5 py-2.5 text-slate-700 shadow-sm flex items-center">
+                                        <i className="fa-solid fa-piggy-bank text-emerald-500 mr-2"></i>
+                                        Other Fees Paid: <span className="ml-2 font-black text-slate-900">{formatCurrency(financialSummary?.schoolTotalOtherFeesPaid || 0)}</span>
+                                    </div>
+                                    <div className="bg-white border text-sm font-semibold rounded-full px-5 py-2.5 text-slate-700 shadow-sm flex items-center">
+                                        <i className="fa-solid fa-clock-rotate-left text-amber-500 mr-2"></i>
+                                        Previous Dues: <span className="ml-2 font-black text-slate-900">{formatCurrency(financialSummary?.schoolTotalPreviousDues || 0)}</span>
+                                    </div>
+                                    <div className="bg-white border text-sm font-semibold rounded-full px-5 py-2.5 text-slate-700 shadow-sm flex items-center">
+                                        <i className="fa-solid fa-check-double text-blue-500 mr-2"></i>
+                                        Previous Dues Collected: <span className="ml-2 font-black text-slate-900">{formatCurrency(financialSummary?.schoolTotalPreviousDuesPaid || 0)}</span>
+                                    </div>
+                                    <div className="bg-emerald-50 border border-emerald-200 text-sm font-semibold rounded-full px-5 py-2.5 text-emerald-800 shadow-sm flex items-center">
+                                        <i className="fa-solid fa-percent text-emerald-600 mr-2"></i>
+                                        Collection Efficiency: <span className="ml-2 font-black text-emerald-900">{financialSummary?.netCollectionEfficiency || "0%"}</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Main Data Charts */}
+                            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 pt-4">
+                                {/* Monthly Trends */}
+                                <div className="bg-white p-6 sm:p-10 rounded-[2rem] border border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] xl:col-span-2">
+                                    <div className="flex flex-col sm:flex-row justify-between sm:items-center mb-8 gap-4">
+                                        <h3 className="text-xl font-extrabold text-slate-800 flex items-center tracking-tight">
+                                            <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center mr-3.5"><i className="fa-solid fa-chart-area text-lg"></i></div>
+                                            Yearly Revenue Trends
+                                        </h3>
+                                        <span className="bg-slate-50 text-slate-600 text-xs font-bold px-4 py-2 rounded-xl border border-slate-200/60 shadow-sm">
+                                            Month over Month
+                                        </span>
+                                    </div>
+                                    <div className="h-[380px] w-full">
+                                        <Line data={monthlyTrendsChartData} options={{ ...commonOptions, plugins: { ...commonOptions.plugins, legend: { position: 'top', align: 'end' } } }} />
+                                    </div>
+                                </div>
+
+                                <div className="bg-white p-6 sm:p-10 rounded-[2rem] border border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
+                                    <div className="flex flex-col sm:flex-row justify-between sm:items-center mb-8 gap-4">
+                                        <h3 className="text-xl font-extrabold text-slate-800 flex items-center tracking-tight">
+                                            <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center mr-3.5"><i className="fa-solid fa-coins text-lg"></i></div>
+                                            Class-wise Revenue Flow
+                                        </h3>
+                                        <span className="bg-slate-50 text-slate-600 text-xs font-bold px-4 py-2 rounded-xl border border-slate-200/60 shadow-sm">
+                                            Current Month Analytics
+                                        </span>
+                                    </div>
+                                    <div className="h-[360px] w-full">
+                                        <Bar data={feesChartData} options={{ ...commonOptions, plugins: { ...commonOptions.plugins, legend: { position: 'top', align: 'end' } } }} />
+                                    </div>
+                                </div>
+
+                                <div className="bg-white p-6 sm:p-10 rounded-[2rem] border border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
+                                    <div className="flex flex-col sm:flex-row justify-between sm:items-center mb-8 gap-4">
+                                        <h3 className="text-xl font-extrabold text-slate-800 flex items-center tracking-tight">
+                                            <div className="w-10 h-10 rounded-xl bg-pink-50 text-pink-600 flex items-center justify-center mr-3.5"><i className="fa-solid fa-venus-mars text-lg"></i></div>
+                                            Gender Distribution
+                                        </h3>
+                                        <span className="bg-slate-50 text-slate-600 text-xs font-bold px-4 py-2 rounded-xl border border-slate-200/60 shadow-sm">
+                                            Per Class Breakdown
+                                        </span>
+                                    </div>
+                                    <div className="h-[360px] w-full">
+                                        <Bar data={genderChartData} options={{ ...commonOptions, scales: { x: { stacked: true, grid: { display: false }, border: { display: false } }, y: { stacked: true, grid: { color: '#f1f5f9' }, border: { display: false } } }, plugins: { ...commonOptions.plugins, legend: { position: 'top', align: 'end' } } }} />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Secondary Data Charts */}
+                            <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+                                <div className="bg-white p-6 sm:p-10 rounded-[2rem] border border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] xl:col-span-2">
+                                    <div className="flex flex-col sm:flex-row justify-between sm:items-center mb-8 gap-4">
+                                        <h3 className="text-xl font-extrabold text-slate-800 flex items-center tracking-tight">
+                                            <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center mr-3.5"><i className="fa-solid fa-user-plus text-lg"></i></div>
+                                            Admissions Velocity
+                                        </h3>
+                                        <span className="bg-slate-50 text-slate-600 text-xs font-bold px-4 py-2 rounded-xl border border-slate-200/60 shadow-sm">
+                                            Current Month
+                                        </span>
+                                    </div>
+                                    <div className="h-[360px] w-full">
+                                        <Line data={admissionsChartData} options={{ ...commonOptions, plugins: { ...commonOptions.plugins, legend: { display: false } } }} />
+                                    </div>
+                                </div>
+
+                                <div className="bg-white p-6 sm:p-10 rounded-[2rem] border border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex flex-col">
+                                    <h3 className="text-xl font-extrabold text-slate-800 flex items-center tracking-tight mb-8">
+                                        <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center mr-3.5"><i className="fa-solid fa-chart-pie text-lg"></i></div>
+                                        Category Diversity
+                                    </h3>
+                                    <div className="flex-1 h-[320px] w-full flex justify-center items-center">
+                                        <Doughnut data={casteChartData} options={{ ...commonOptions, cutout: '78%', plugins: { ...commonOptions.plugins, legend: { position: 'bottom', labels: { usePointStyle: true, padding: 24, font: { family: "'Plus Jakarta Sans', sans-serif", size: 12 } } } } }} />
+                                    </div>
+                                </div>
+                            </div>
+                        </>
+                    )}
                 </div>
-                <DonutChart title="Social Demographics" data={data.casteData} />
-            </div>
+            )}
         </div>
     );
 };
